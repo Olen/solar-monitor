@@ -37,8 +37,8 @@ def validate_service_uuid(uuid):
     else:
         print('Unrecognized Service / Solar device : ' + uuid)
 
-# implementation of gatt.DeviceManager, discovers any GATT device
-class DiscoverAnyDeviceManager(gatt.DeviceManager):
+# implementation of blegatt.DeviceManager, discovers any GATT device
+class DiscoverAnyDeviceManager(blegatt.DeviceManager):
     def device_discovered(self, device):
         print("[%s] Discovered, alias = %s" % (device.mac_address, device.alias()))
         # self.stop_discovery()   # in case to stop after discovered one device
@@ -47,8 +47,8 @@ class DiscoverAnyDeviceManager(gatt.DeviceManager):
         return ConnectAnyDevice(mac_address=mac_address, manager=self)
 
 
-# implementation of gatt.Device, connects to any GATT device
-class ConnectAnyDevice(gatt.Device):
+# implementation of blegatt.Device, connects to any GATT device
+class ConnectAnyDevice(blegatt.Device):
     def __init__(self, mac_address, manager, auto_reconnect=False):
         super().__init__(mac_address=mac_address, manager=manager)
         self.auto_reconnect = auto_reconnect
