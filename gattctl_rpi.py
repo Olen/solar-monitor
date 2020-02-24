@@ -4,11 +4,11 @@ from argparse import ArgumentParser
 import blegatt
 import time
 
-HR_SVC_UUID =        '0000180d-0000-1000-8000-00805f9b34fb'
-HR_MSRMT_UUID =      '00002a37-0000-1000-8000-00805f9b34fb'
-BODY_SNSR_LOC_UUID = '00002a38-0000-1000-8000-00805f9b34fb'
-HR_CTRL_PT_UUID =    '00002a39-0000-1000-8000-00805f9b34fb'
-BIT16_SVC_UUID =     '1523'
+# HR_SVC_UUID =        '0000180d-0000-1000-8000-00805f9b34fb'
+# HR_MSRMT_UUID =      '00002a37-0000-1000-8000-00805f9b34fb'
+# BODY_SNSR_LOC_UUID = '00002a38-0000-1000-8000-00805f9b34fb'
+# HR_CTRL_PT_UUID =    '00002a39-0000-1000-8000-00805f9b34fb'
+# BIT16_SVC_UUID =     '1523'
 
 # Device service and their characteristic UUID's
 MERITSUN_NOTIFY_UUID = 	 '0000ffe4-0000-1000-8000-00805f9b34fb'
@@ -19,7 +19,8 @@ SOLARLINK_NOTIFY_UUID =	 '0000fff1-0000-1000-8000-00805f9b34fb'
 SOLARLINK_SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb'
 # as new device service, add to this list.
 # only devices with these Service UUID's will be scanned & connected to.
-dev_services_list = [HR_SVC_UUID, MERITSUN_SERVICE_UUID, TBENERGY_SERVICE_UUID, SOLARLINK_SERVICE_UUID, BIT16_SVC_UUID]
+# dev_services_list = [HR_SVC_UUID, MERITSUN_SERVICE_UUID, TBENERGY_SERVICE_UUID, SOLARLINK_SERVICE_UUID, BIT16_SVC_UUID]
+dev_services_list = [MERITSUN_SERVICE_UUID, TBENERGY_SERVICE_UUID, SOLARLINK_SERVICE_UUID]
 
 device_manager = None
 
@@ -86,11 +87,16 @@ class ConnectAnyDevice(blegatt.Device):
         device_notification_service = next(
             s for s in self.services
             if s.uuid == HR_SVC_UUID)
+        print("Found dev notify serv [%s]" % device_notification_service)
 
         device_notification_characteristic = next(
             c for c in device_notification_service.characteristics
-            if c.uuid == BODY_SNSR_LOC_UUID)
+            if c.uuid == HR_MSRMT_UUID)
+        print("Found dev notify char [%s] , [%s]" %(device_notification_characteristic, c))
+          
+        # if c.uuid == BODY_SNSR_LOC_UUID)
 
+        print("Subscribing to notify char [%s]" % device_notification_characteristic)
         device_notification_characteristic.enable_notifications()
 
     # only for reading a characteristic
