@@ -4,8 +4,8 @@ from argparse import ArgumentParser
 import blegatt
 import time
 
-# HR_SVC_UUID =        '0000180d-0000-1000-8000-00805f9b34fb'
-# HR_MSRMT_UUID =      '00002a37-0000-1000-8000-00805f9b34fb'
+HR_SVC_UUID =        '0000180d-0000-1000-8000-00805f9b34fb'
+HR_MSRMT_UUID =      '00002a37-0000-1000-8000-00805f9b34fb'
 # BODY_SNSR_LOC_UUID = '00002a38-0000-1000-8000-00805f9b34fb'
 # HR_CTRL_PT_UUID =    '00002a39-0000-1000-8000-00805f9b34fb'
 # BIT16_SVC_UUID =     '1523'
@@ -17,6 +17,7 @@ TBENERGY_NOTIFY_UUID = 	 '0000ffe4-0000-1000-8000-00805f9b34fb'
 TBENERGY_SERVICE_UUID =  '0000ffe0-0000-1000-8000-00805f9b34fb'
 SOLARLINK_NOTIFY_UUID =	 '0000fff1-0000-1000-8000-00805f9b34fb'
 SOLARLINK_SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb'
+
 # as new device service, add to this list.
 # only devices with these Service UUID's will be scanned & connected to.
 # dev_services_list = [HR_SVC_UUID, MERITSUN_SERVICE_UUID, TBENERGY_SERVICE_UUID, SOLARLINK_SERVICE_UUID, BIT16_SVC_UUID]
@@ -78,6 +79,14 @@ class ConnectAnyDevice(blegatt.Device):
         print("[%s] Resolved services" % (self.mac_address))
         for service in self.services:
             print("[%s]  Service [%s]" % (self.mac_address, service.uuid))
+            if service.uuid == MERITSUN_SERVICE_UUID:
+                print("[%s]  Service type: %s" % (self.mac_address, "Meritsun"))
+            elif service.uuid == TBENERGY_SERVICE_UUID:
+                print("[%s]  Service type: %s" % (self.mac_address, "TB Energy"))
+            elif service.uuid == SOLARLINK_SERVICE_UUID:
+                print("[%s]  Service type: %s" % (self.mac_address, "Solarlink"))
+            else:
+                print("[%s]  Service type: %s" % (self.mac_address, "Unknown"))
             for characteristic in service.characteristics:
                 print("[%s]    Characteristic [%s]" % (self.mac_address, characteristic.uuid))
                 # only for reading a characteristic
@@ -86,13 +95,14 @@ class ConnectAnyDevice(blegatt.Device):
 
         device_notification_service = next(
             s for s in self.services
-            if s.uuid == HR_SVC_UUID)
+            if s.uuid == MERITSUN_SERVICE_UUID or s.uuid == TBENERGY_SERVICE_UUID or s.uuid == SOLARLINK_SERVICE_UUID)
         print("Found dev notify serv [%s]" % device_notification_service)
 
         device_notification_characteristic = next(
             c for c in device_notification_service.characteristics
-            if c.uuid == HR_MSRMT_UUID)
-        print("Found dev notify char [%s] , [%s]" %(device_notification_characteristic, c))
+            if c.uuid == MERITSUN_NOTIFY_UUID or c.uuid == TBENERGY_NOTIFY_UUID or c.uuid == SOLARLINK_NOTIFY_UUID)
+        print("Found dev notify char [%s]" %(device_notification_characteristic))
+        # print("Found dev notify char [%s] , [%s]" %(device_notification_characteristic, c))
           
         # if c.uuid == BODY_SNSR_LOC_UUID)
 
@@ -106,7 +116,8 @@ class ConnectAnyDevice(blegatt.Device):
 
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
-        print("characteristic value:", value.decode("utf-8"))
+        print("characteristic {} value: {}".format(characteristic.uuid, value))
+        # print("characteristic value:", value.decode("utf-8"))
         # process the received "value" 
         # Disable notifications - enable_notifications(False)  !?
 

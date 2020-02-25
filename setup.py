@@ -6,7 +6,7 @@ setup(
     version='0.1',
     description='BLE GATT for RPi',
     keywords='blegatt',
-    py_modules=['gattctl'],
+    # py_modules=['gattctl'],
     entry_points={
         'console_scripts': ['gattctl = gattctl:main']
     }
