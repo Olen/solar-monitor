@@ -95,6 +95,4 @@ def send_to_server(payload):
 		print(response)
 
 
-def process_data():
-
 

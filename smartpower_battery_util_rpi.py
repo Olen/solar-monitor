@@ -1,15 +1,19 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from __future__ import print_function
+import os
+import sys
+import blegatt
+import time
 
-class BatteryEntity(Parcelable):
+class BatteryEntity():
     # CREATOR = Creator()
 
     def createFromParcel(self, source):
         return BatteryEntity(source)
 
     def newArray(self, size):
-        return BatteryEntity[size] 
+        return BatteryEntity[size]
 
     afeStatus = 0
     bluetoothDevice = None
@@ -34,19 +38,11 @@ class BatteryEntity(Parcelable):
     mVoltageOld1 = 0
     mVoltageOld2 = 0
     msg = None
-    rssi = 0
 
-    @overloaded
-    def __init__(self, bluetoothDevice2, rssi2):
+    #@overloaded
+    def __init__(self, bluetoothDevice2):
         super(BatteryEntity, self).__init__()
         self.bluetoothDevice = bluetoothDevice2
-        self.rssi = rssi2
-
-    # @__init__.register(object, BluetoothDevice)
-    # def __init___0(self, bluetoothDevice2):
-        # super(BatteryEntity, self).__init__()
-        # self.bluetoothDevice = bluetoothDevice2
-        # self.rssi = 0
 
     def getmCurrent(self):
         return self.mCurrent
@@ -119,16 +115,15 @@ class BatteryEntity(Parcelable):
         # dest.writeInt(self.mStatus)
         # dest.writeInt(self.mSoc)
         # dest.writeInt(self.mTemperature)
-        # dest.writeInt(self.rssi)
         # dest.writeInt(self.mBatteryType)
         # dest.writeString(self.msg)
         # dest.writeInt(self.mGetInfoStatus)
         # dest.writeInt(self.afeStatus)
 
-    @__init__.register(object, Parcel)
+    # @__init__.register(object, Parcel)
     def __init___1(self, in_):
         super(BatteryEntity, self).__init__()
-        self.bluetoothDevice = in_. (BluetoothDevice.__class__.getClassLoader())
+        self.bluetoothDevice = in_.BluetoothDevice.__class__.getClassLoader()
         self.mCurrent = in_.readInt()
         self.mVoltage = in_.readInt()
         self.mCapacity = in_.readInt()
@@ -136,7 +131,6 @@ class BatteryEntity(Parcelable):
         self.mStatus = in_.readInt()
         self.mSoc = in_.readInt()
         self.mTemperature = in_.readInt()
-        self.rssi = in_.readInt()
         self.mBatteryType = in_.readInt()
         self.msg = in_.readString()
         self.mGetInfoStatus = in_.readInt()
@@ -161,14 +155,15 @@ class SmartPowerUtil(object):
         cmdData = ""
         if data != None and len(data):
             i = 0
-            while len(data):
+            while i < len(data):
                 if cls.Revindex > 121:
                     cls.Revindex = 0
                     cls.end = 0
                     cls.RecvDataType = cls.SOI
                 if cls.RecvDataType == 1:
-                    if (data[i] & 255) != 146:
-                    else:
+                    # if (data[i] & 255) != 146:
+                    # else:
+                    if (data[i] & 255) == 146:
                         cls.RecvDataType = cls.INFO
                         bArr = cls.RevBuf
                         i2 = cls.Revindex
@@ -182,10 +177,11 @@ class SmartPowerUtil(object):
                     if data[i] == 12:
                         if cls.end < 110:
                             cls.end = cls.Revindex
-                        if cls.Revindex != 121 and cls.Revindex != 66 and cls.Revindex != 88:
-                        else:
+                        # if cls.Revindex != 121 and cls.Revindex != 66 and cls.Revindex != 88:
+                        # else:
+                        if cls.Revindex == 121 or cls.Revindex == 66 or cls.Revindex == 88:
                             cls.RecvDataType = cls.EOI
-                    else:
+                    # else:
                 elif cls.RecvDataType == 3:
                     Chksum = 0
                     cls.end = 114
@@ -269,10 +265,9 @@ class SmartPowerUtil(object):
 
 
 
-class ReaderActivity(BleProfileServiceReadyActivity, ReaderService, UARTBinder, ReaderInterface, AdapterView, OnItemSelectedListener):
-    TAG = "ReaderActivity"
+# class ReaderActivity(BleProfileServiceReadyActivity, ReaderService, UARTBinder, ReaderInterface, AdapterView, OnItemSelectedListener):
+class ReaderActivity():
     cumulativeLog = ""
-    mConnectButton = None
     tvBattCur = None
     tvBattTemp = None
     tvBattVolt = None
@@ -284,108 +279,107 @@ class ReaderActivity(BleProfileServiceReadyActivity, ReaderService, UARTBinder, 
     batteryEntity = None
     mServiceBinder = None
 
-    def onStart(self):
-        intent = getIntent()
-        if not isDeviceConnected() and intent.hasExtra(MainActivity.EXTRA_ADDRESS):
-            bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-            value = intent.getStringExtra(MainActivity.EXTRA_ADDRESS)
-            print(self.TAG + "onStart : device value=" + value)
-            device = bluetoothAdapter.getRemoteDevice(value)
-            #  BluetoothDevice String
-            name = intent.getStringExtra(MainActivity.EXTRA_NAME)
-            onDeviceSelected(device, device.__name__)
-            print(self.TAG + "onStart : device=" + device + "  getName =" + device.__name__ + " name= " + name)
-            intent.removeExtra(MainActivity.EXTRA_NAME)
-            intent.removeExtra(MainActivity.EXTRA_ADDRESS)
-            self.batteryEntity = BatteryEntity(device)
-
-    def onDeviceSelected(self, device, name):
-        #  The super method starts the service
-        super(ReaderActivity, self).onDeviceSelected(device, name)
-
-    def getDefaultDeviceName(self):
-        return R.string.template_default_name
-
-    def getAboutTextId(self):
-        return R.string.uart_about_text
+    def __init__(self, device):
+        self.batteryEntity = BatteryEntity(device)
 
     def send(self, text):
         if self.mServiceBinder != None:
             self.mServiceBinder.send(text)
 
-    def onActivityResult(self, requestCode, resultCode, data):
-        super(ReaderActivity, self).onActivityResult(requestCode, resultCode, data)
-        if resultCode == Activity.RESULT_CANCELED:
-            return
+    # mBroadcastReceiver = BroadcastReceiver()
 
-    mBroadcastReceiver = BroadcastReceiver()
+    # def onReceive(self, context, intent):
+        # action = intent.getAction()
+        # device = intent.getParcelableExtra(ReaderService.EXTRA_DEVICE)
+        # if ReaderService.BROADCAST_UART_RX == action:
+            # data = intent.getByteArrayExtra(ReaderService.EXTRA_DATA)
+            # setValueOn(device, data)
 
-    def onReceive(self, context, intent):
-        action = intent.getAction()
-        device = intent.getParcelableExtra(ReaderService.EXTRA_DEVICE)
-        if ReaderService.BROADCAST_UART_RX == action:
-            data = intent.getByteArrayExtra(ReaderService.EXTRA_DATA)
-            setValueOnView(device, data)
-
-    def setValueOnView(self, device, data):
-        if SmartPowerUtil.handleMessage(SmartPowerUtil.broadcastUpdate(self, data), self.batteryEntity):
+    def setValueOn(self, device, data):
+        retCmdData = SmartPowerUtil.broadcastUpdate(data)
+        if SmartPowerUtil.handleMessage(retCmdData, self.batteryEntity):
             logCumulativeData = [None] * 8
             #  for 8 fields to save to log file
-            #  Current A 
-            self.tvBattCur.setText("{:.1f}".format([None] * ))
-            logCumulativeData[0] = "{:.1f}".format([None] * )
+            #  Current A
+            # self.tvBattCur.setText("{:.1f}".format([None] * ))
+            self.tvBattCur = "{:.1f}".format((double (float (self.batteryEntity.getmCurrent())) ) / 1000.0)
+            print("{:.1f}".format(((double (float (self.batteryEntity.getmCurrent())) ) / 1000.0) ))
+            logCumulativeData[0] = "{:.1f}".format(((double (float (self.batteryEntity.getmCurrent())) ) / 1000.0) )
             if abs(float(self.batteryEntity.getmCurrent())) <= 20.0:
-                self.tvBattCur.setText("0.0")
+                # self.tvBattCur.setText("0.0")
+                self.tvBattCur = "0.0"
+                print("tvBattCur = 0.0")
                 logCumulativeData[0] = "0.0"
             elif abs(float(self.batteryEntity.getmCurrent())) > 200000.0:
                 if self.batteryEntity.getmCurrent() > 600000:
-                    self.tvBattCur.setText("600.0")
+                    # self.tvBattCur.setText("600.0")
+                    self.tvBattCur = "600.0"
+                    print("tvBattCur = 600.0")
                     logCumulativeData[0] = "600.0"
                 elif self.batteryEntity.getmCurrent() < -600000:
-                    self.tvBattCur.setText("-600.0")
+                    # self.tvBattCur.setText("-600.0")
+                    self.tvBattCur = "-600.0"
+                    print("tvBattCur = -600.0")
                     logCumulativeData[0] = "-600.0"
-            #  Temperature deg C 
+            #  Temperature deg C
             if (float((self.batteryEntity.getmTemperature() - 2731))) / 10.0 >= -40.0:
-                self.tvBattTemp.setText("{:.1f}".format([None] * ))
-                logCumulativeData[1] = "{:.1f}".format([None] * )
+                # self.tvBattTemp.setText("{:.1f}".format([None] * ))
+                self.tvBattTemp = "{:.1f}".format((double (batteryEntity.getmTemperature() - 2731)) / 10.0)
+                print("tvBattTemp ")
+                print("{:.1f}".format((double (batteryEntity.getmTemperature() - 2731)) / 10.0))
+                logCumulativeData[1] = "{:.1f}".format((double (batteryEntity.getmTemperature() - 2731)) / 10.0)
             elif self.batteryEntity.getmTemperature() == 0:
-                self.tvBattTemp.setText("null")
+                self.tvBattTemp = "null"
+                print("tvBattTemp = null")
                 logCumulativeData[1] = "null"
             else:
-                self.tvBattTemp.setText("-40")
+                # self.tvBattTemp.setText("-40")
+                self.tvBattTemp = "-40"
+                print("tvBattTemp = -40")
                 logCumulativeData[1] = "-40"
-            #  Voltage V 
-            self.tvBattVolt.setText("{:.1f}".format([None] * ))
-            logCumulativeData[2] = "{:.1f}".format([None] * )
-            #  State of charge SoC 
-            self.tvBattSoC.setText(Integer.toString(self.batteryEntity.getmSoc()))
-            logCumulativeData[3] = Integer.toString(self.batteryEntity.getmSoc())
-            #  Capacity Ah 
-            self.tvCapacity.setText("{:.1f}".format([None] * ))
-            logCumulativeData[4] = "{:.1f}".format([None] * )
-            #  Charge Cycles 
-            self.tvCycles.setText(Integer.toString(self.batteryEntity.getmCycles()))
-            logCumulativeData[5] = Integer.toString(self.batteryEntity.getmCycles())
-            #  Status 
+            #  Voltage V
+            # self.tvBattVolt.setText("{:.1f}".format([None] * ))
+            self.tvBattVolt = "{:.1f}".format((double (float (batteryEntity.getmVoltage()))) / 1000.0)
+            print("tvBattVolt ")
+            print("{:.1f}".format((double (float (batteryEntity.getmVoltage()))) / 1000.0))
+            logCumulativeData[2] = "{:.1f}".format((double (float (batteryEntity.getmVoltage()))) / 1000.0)
+            #  State of charge SoC
+            # self.tvBattSoC.setText(Integer.toString(self.batteryEntity.getmSoc()))
+            self.tvBattSoC = str(self.batteryEntity.getmSoc())
+            print("tvBattSoC  ")
+            print(str(self.batteryEntity.getmSoc()))
+            logCumulativeData[3] = str(self.batteryEntity.getmSoc())
+            #  Capacity Ah
+            # self.tvCapacity.setText("{:.1f}".format([None] * ))
+            self.tvCapacity = "{:.1f}".format((float (batteryEntity.getmCapacity())) / 1000.0)
+            print("tvCapacity   ")
+            print("{:.1f}".format((float (batteryEntity.getmCapacity())) / 1000.0))
+            logCumulativeData[4] = "{:.1f}".format((float (batteryEntity.getmCapacity())) / 1000.0)
+            #  Charge Cycles
+            # self.tvCycles.setText(Integer.toString(self.batteryEntity.getmCycles()))
+            self.tvCycles = str(self.batteryEntity.getmCycles())
+            print("tvCycles  ")
+            print(str(self.batteryEntity.getmCycles()))
+            logCumulativeData[5] = str(self.batteryEntity.getmCycles())
+            #  Status
             if (float(self.batteryEntity.getmCurrent())) > 20.0:
-                self.tvState.setText(getString(R.string.Status_Charging))
-                logCumulativeData[6] = getString(R.string.Status_Charging)
+                self.tvState = "Charging"
+                logCumulativeData[6] = "Charging"
             elif (float(self.batteryEntity.getmCurrent())) < -20.0:
-                self.tvState.setText(getString(R.string.Status_Discharging))
-                logCumulativeData[6] = getString(R.string.Status_Discharging)
+                self.tvState = "Discharging"
+                logCumulativeData[6] = "Discharging"
             else:
-                self.tvState.setText(getString(R.string.Status_Standby))
-                logCumulativeData[6] = getString(R.string.Status_Standby)
-            #  Health 
+                self.tvState = "Standby"
+                logCumulativeData[6] = "Standby"
+            #  Health
             if (float(self.batteryEntity.getmCycles())) > 2000.0:
-                self.tvHealth.setText(getString(R.string.Health_Good))
-                logCumulativeData[7] = getString(R.string.Health_Good)
+                self.tvHealth = "Good"
+                logCumulativeData[7] = "Good"
             else:
-                self.tvHealth.setText(getString(R.string.Health_Perfect))
-                logCumulativeData[7] = getString(R.string.Health_Perfect)
+                self.tvHealth = "Perfect"
+                logCumulativeData[7] = "Perfect"
             writeLogToFile(logCumulativeData)
 
     def clearCumulativeLog(self):
         self.cumulativeLog = ""
-
 
