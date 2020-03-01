@@ -187,28 +187,28 @@ class SmartPowerUtil(object):
                     cls.end = 114
                     j = 1
                     while j < cls.end - 5:
-                        Chksum = int((Asciitochar(cls.RevBuf[j], cls.RevBuf[j + 1]) + Chksum))
+                        Chksum = int((cls.Asciitochar(cls.RevBuf[j], cls.RevBuf[j + 1]) + Chksum))
                         j += 2
                     i1 = 0
-                    while len(RevBuf):
-                        print("test broadcastUpdate==" + i1 + ":" + cls.RevBuf[i1])
+                    while i1 < len(cls.RevBuf):
+                        print("test broadcastUpdate==", i1, ":", cls.RevBuf[i1])
                         i1 += 1
-                    print(cls.TAG + "broadcastUpdate: Chksum==" + Chksum)
-                    print(cls.TAG + "broadcastUpdate: " + (((int(Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
-                    print(cls.TAG + "broadcastUpdate: end==" + cls.end)
-                    if Chksum == ((int(Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2]))):
+                    print(cls.TAG + "broadcastUpdate: Chksum==", Chksum)
+                    print(cls.TAG + "broadcastUpdate: ", (((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
+                    print(cls.TAG + "broadcastUpdate: end==", cls.end)
+                    if Chksum == ((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2]))):
                         cmdData = str(cls.RevBuf, 1, cls.Revindex)
-                        cls.Status = Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
-                        cls.soc = Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
+                        cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
+                        cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
                         cls.soc <<= 8
-                        cls.soc += Asciitochar(cls.RevBuf[29], cls.RevBuf[30])
-                        cls.Current = Asciitochar(cls.RevBuf[15], cls.RevBuf[16])
+                        cls.soc += cls.Asciitochar(cls.RevBuf[29], cls.RevBuf[30])
+                        cls.Current = cls.Asciitochar(cls.RevBuf[15], cls.RevBuf[16])
                         cls.Current <<= 8
-                        cls.Current += Asciitochar(cls.RevBuf[13], cls.RevBuf[14])
+                        cls.Current += cls.Asciitochar(cls.RevBuf[13], cls.RevBuf[14])
                         cls.Current <<= 8
-                        cls.Current += Asciitochar(cls.RevBuf[11], cls.RevBuf[12])
+                        cls.Current += cls.Asciitochar(cls.RevBuf[11], cls.RevBuf[12])
                         cls.Current <<= 8
-                        cls.Current += Asciitochar(cls.RevBuf[9], cls.RevBuf[10])
+                        cls.Current += cls.Asciitochar(cls.RevBuf[9], cls.RevBuf[10])
                     cls.Revindex = 0
                     cls.end = 0
                     cls.RecvDataType = cls.SOI
