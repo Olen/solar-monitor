@@ -197,7 +197,8 @@ class SmartPowerUtil(object):
                     print(cls.TAG + "broadcastUpdate: ", (((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
                     print(cls.TAG + "broadcastUpdate: end==", cls.end)
                     if Chksum == ((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2]))):
-                        cmdData = str(cls.RevBuf, 1, cls.Revindex)
+                        # cmdData = str(cls.RevBuf, 1, cls.Revindex)
+                        cmdData = cls.RevBuf[1:cls.Revindex]
                         cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
                         cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
                         cls.soc <<= 8
@@ -235,9 +236,10 @@ class SmartPowerUtil(object):
     def handleMessage(cls, str_, batteryEntity):
         if batteryEntity == None or str_ == None or "" == str_:
             return False
-        print("test handleMessage==" + str_)
-        RevBuf2 = str_.getBytes()
-        if len(RevBuf2):
+        print("test handleMessage==", str_)
+        # RevBuf2 = str_.getBytes()
+        RevBuf2 = str_
+        if len(RevBuf2) < 1:
             return False
         voltage = (((((cls.Asciitochar(RevBuf2[6], RevBuf2[7]) << 8) + cls.Asciitochar(RevBuf2[4], RevBuf2[5])) << 8) + cls.Asciitochar(RevBuf2[2], RevBuf2[3])) << 8) + cls.Asciitochar(RevBuf2[0], RevBuf2[1])
         current = (((((cls.Asciitochar(RevBuf2[14], RevBuf2[15]) << 8) + cls.Asciitochar(RevBuf2[12], RevBuf2[13])) << 8) + cls.Asciitochar(RevBuf2[10], RevBuf2[11])) << 8) + cls.Asciitochar(RevBuf2[8], RevBuf2[9])
@@ -260,7 +262,7 @@ class SmartPowerUtil(object):
         batteryEntity.setmTemperature(temperature)
         batteryEntity.setmBatteryType(len(str_))
         batteryEntity.setMsg(str_)
-        print("test voltage==" + voltage + "==current==" + current + "==soc==" + soc2 + "==capacity==" + capacity + "==cycles==" + cycles + "==status==" + status + "==temperature==" + temperature + "==str.length()==" + len(str_))
+        print("test voltage==", voltage, "==current==", current, "==soc==", soc2, "==capacity==", capacity, "==cycles==", cycles, "==status==", status, "==temperature==", temperature, "==str.length()==", len(str_))
         return True
 
 
@@ -302,9 +304,9 @@ class ReaderActivity():
             #  for 8 fields to save to log file
             #  Current A
             # self.tvBattCur.setText("{:.1f}".format([None] * ))
-            self.tvBattCur = "{:.1f}".format((double (float (self.batteryEntity.getmCurrent())) ) / 1000.0)
-            print("{:.1f}".format(((double (float (self.batteryEntity.getmCurrent())) ) / 1000.0) ))
-            logCumulativeData[0] = "{:.1f}".format(((double (float (self.batteryEntity.getmCurrent())) ) / 1000.0) )
+            self.tvBattCur = "{:.1f}".format((float (float (self.batteryEntity.getmCurrent())) ) / 1000.0)
+            print("{:.1f}".format(((float (float (self.batteryEntity.getmCurrent())) ) / 1000.0) ))
+            logCumulativeData[0] = "{:.1f}".format(((float (float (self.batteryEntity.getmCurrent())) ) / 1000.0) )
             if abs(float(self.batteryEntity.getmCurrent())) <= 20.0:
                 # self.tvBattCur.setText("0.0")
                 self.tvBattCur = "0.0"
@@ -324,10 +326,10 @@ class ReaderActivity():
             #  Temperature deg C
             if (float((self.batteryEntity.getmTemperature() - 2731))) / 10.0 >= -40.0:
                 # self.tvBattTemp.setText("{:.1f}".format([None] * ))
-                self.tvBattTemp = "{:.1f}".format((double (batteryEntity.getmTemperature() - 2731)) / 10.0)
+                self.tvBattTemp = "{:.1f}".format((float (self.batteryEntity.getmTemperature() - 2731)) / 10.0)
                 print("tvBattTemp ")
-                print("{:.1f}".format((double (batteryEntity.getmTemperature() - 2731)) / 10.0))
-                logCumulativeData[1] = "{:.1f}".format((double (batteryEntity.getmTemperature() - 2731)) / 10.0)
+                print("{:.1f}".format((float (self.batteryEntity.getmTemperature() - 2731)) / 10.0))
+                logCumulativeData[1] = "{:.1f}".format((float (self.batteryEntity.getmTemperature() - 2731)) / 10.0)
             elif self.batteryEntity.getmTemperature() == 0:
                 self.tvBattTemp = "null"
                 print("tvBattTemp = null")
@@ -339,10 +341,10 @@ class ReaderActivity():
                 logCumulativeData[1] = "-40"
             #  Voltage V
             # self.tvBattVolt.setText("{:.1f}".format([None] * ))
-            self.tvBattVolt = "{:.1f}".format((double (float (batteryEntity.getmVoltage()))) / 1000.0)
+            self.tvBattVolt = "{:.1f}".format((float (float (self.batteryEntity.getmVoltage()))) / 1000.0)
             print("tvBattVolt ")
-            print("{:.1f}".format((double (float (batteryEntity.getmVoltage()))) / 1000.0))
-            logCumulativeData[2] = "{:.1f}".format((double (float (batteryEntity.getmVoltage()))) / 1000.0)
+            print("{:.1f}".format((float (float (self.batteryEntity.getmVoltage()))) / 1000.0))
+            logCumulativeData[2] = "{:.1f}".format((float (float (self.batteryEntity.getmVoltage()))) / 1000.0)
             #  State of charge SoC
             # self.tvBattSoC.setText(Integer.toString(self.batteryEntity.getmSoc()))
             self.tvBattSoC = str(self.batteryEntity.getmSoc())
@@ -351,10 +353,10 @@ class ReaderActivity():
             logCumulativeData[3] = str(self.batteryEntity.getmSoc())
             #  Capacity Ah
             # self.tvCapacity.setText("{:.1f}".format([None] * ))
-            self.tvCapacity = "{:.1f}".format((float (batteryEntity.getmCapacity())) / 1000.0)
+            self.tvCapacity = "{:.1f}".format((float (self.batteryEntity.getmCapacity())) / 1000.0)
             print("tvCapacity   ")
-            print("{:.1f}".format((float (batteryEntity.getmCapacity())) / 1000.0))
-            logCumulativeData[4] = "{:.1f}".format((float (batteryEntity.getmCapacity())) / 1000.0)
+            print("{:.1f}".format((float (self.batteryEntity.getmCapacity())) / 1000.0))
+            logCumulativeData[4] = "{:.1f}".format((float (self.batteryEntity.getmCapacity())) / 1000.0)
             #  Charge Cycles
             # self.tvCycles.setText(Integer.toString(self.batteryEntity.getmCycles()))
             self.tvCycles = str(self.batteryEntity.getmCycles())
@@ -378,7 +380,7 @@ class ReaderActivity():
             else:
                 self.tvHealth = "Perfect"
                 logCumulativeData[7] = "Perfect"
-            writeLogToFile(logCumulativeData)
+            # writeLogToFile(logCumulativeData)
 
     def clearCumulativeLog(self):
         self.cumulativeLog = ""
