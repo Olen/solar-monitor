@@ -206,7 +206,7 @@ class SmartPowerUtil(object):
                         cmdData = cls.RevBuf[1:cls.Revindex]
                         cls.Status = cls.GetValue(cls.RevBuf, 37, 38)
                         cls.soc = cls.GetValue(cls.RevBuf, 29, 32)
-                        cls.current = cls.GetValue(cls.RevBuf, 9, 15
+                        cls.current = cls.GetValue(cls.RevBuf, 9, 15)
                         # cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
                         # cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
                         # cls.soc <<= 8
