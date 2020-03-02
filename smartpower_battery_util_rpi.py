@@ -152,6 +152,7 @@ class SmartPowerUtil(object):
 
     @classmethod
     def broadcastUpdate(cls, data):
+        print("broadcastUpdate", data)
         cmdData = ""
         if data != None and len(data):
             i = 0
@@ -191,13 +192,14 @@ class SmartPowerUtil(object):
                         j += 2
                     i1 = 0
                     while i1 < len(cls.RevBuf):
-                        print("test broadcastUpdate==", i1, ":", cls.RevBuf[i1])
+                        print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1], int(cls.RevBuf[i1], 16))
                         i1 += 1
-                    print(cls.TAG + "broadcastUpdate: Chksum==", Chksum)
-                    print(cls.TAG + "broadcastUpdate: ", (((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
-                    print(cls.TAG + "broadcastUpdate: end==", cls.end)
+                    print(cls.TAG, "broadcastUpdate: Chksum ==", Chksum)
+                    print(cls.TAG, "broadcastUpdate: ", (((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
+                    print(cls.TAG, "broadcastUpdate: end ==", cls.end)
                     if Chksum == ((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2]))):
                         # cmdData = str(cls.RevBuf, 1, cls.Revindex)
+                        print(cls.TAG, "revindex:", cls.Revindex)
                         cmdData = cls.RevBuf[1:cls.Revindex]
                         cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
                         cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
@@ -232,11 +234,26 @@ class SmartPowerUtil(object):
             return x2 + 0
         return x2 + (b - 65) + 10
 
+    def GetValue(cls, buf, start, end):
+        string = buf[start:end + 1]
+        print(string)
+        e = end + 1
+        b = end - 1
+        string = ""
+        while b >= start:
+            chrs = buf[b:e]
+            print(chrs)
+            e = b
+            b = b - 2
+            string += chr(chrs[0]) + chr(chrs[1])
+        return int(string, 16)
+
+
     @classmethod
     def handleMessage(cls, str_, batteryEntity):
         if batteryEntity == None or str_ == None or "" == str_:
             return False
-        print("test handleMessage==", str_)
+        print("test handleMessage ==", str_)
         # RevBuf2 = str_.getBytes()
         RevBuf2 = str_
         if len(RevBuf2) < 38:
@@ -298,6 +315,7 @@ class ReaderActivity():
             # setValueOn(device, data)
 
     def setValueOn(self, device, data):
+        print("setValueOn starting with data", data)
         retCmdData = SmartPowerUtil.broadcastUpdate(data)
         if SmartPowerUtil.handleMessage(retCmdData, self.batteryEntity):
             logCumulativeData = [None] * 8
