@@ -192,7 +192,7 @@ class SmartPowerUtil(object):
                         j += 2
                     i1 = 0
                     while i1 < len(cls.RevBuf):
-                        if cls.RevBuf[i1] > 0:
+                        if cls.RevBuf[i1] is not None:
                             print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1], chr(cls.RevBuf[i1]))
                         else:
                             print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1])
