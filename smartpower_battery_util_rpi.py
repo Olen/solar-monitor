@@ -240,6 +240,7 @@ class SmartPowerUtil(object):
             return x2 + 0
         return x2 + (b - 65) + 10
 
+    @classmethod
     def GetValue(cls, buf, start, end):
         string = buf[start:end + 1]
         print(string)
