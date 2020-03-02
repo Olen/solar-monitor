@@ -204,17 +204,20 @@ class SmartPowerUtil(object):
                         # cmdData = str(cls.RevBuf, 1, cls.Revindex)
                         print(cls.TAG, "revindex:", cls.Revindex)
                         cmdData = cls.RevBuf[1:cls.Revindex]
-                        cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
-                        cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
-                        cls.soc <<= 8
-                        cls.soc += cls.Asciitochar(cls.RevBuf[29], cls.RevBuf[30])
-                        cls.Current = cls.Asciitochar(cls.RevBuf[15], cls.RevBuf[16])
-                        cls.Current <<= 8
-                        cls.Current += cls.Asciitochar(cls.RevBuf[13], cls.RevBuf[14])
-                        cls.Current <<= 8
-                        cls.Current += cls.Asciitochar(cls.RevBuf[11], cls.RevBuf[12])
-                        cls.Current <<= 8
-                        cls.Current += cls.Asciitochar(cls.RevBuf[9], cls.RevBuf[10])
+                        cls.Status = cls.GetValue(cls.RevBuf, 37, 38)
+                        cls.soc = cls.GetValue(cls.RevBuf, 29, 32)
+                        cls.current = cls.GetValue(cls.RevBuf, 9, 15
+                        # cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
+                        # cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
+                        # cls.soc <<= 8
+                        # cls.soc += cls.Asciitochar(cls.RevBuf[29], cls.RevBuf[30])
+                        # cls.Current = cls.Asciitochar(cls.RevBuf[15], cls.RevBuf[16])
+                        # cls.Current <<= 8
+                        # cls.Current += cls.Asciitochar(cls.RevBuf[13], cls.RevBuf[14])
+                        # cls.Current <<= 8
+                        # cls.Current += cls.Asciitochar(cls.RevBuf[11], cls.RevBuf[12])
+                        # cls.Current <<= 8
+                        # cls.Current += cls.Asciitochar(cls.RevBuf[9], cls.RevBuf[10])
                     cls.Revindex = 0
                     cls.end = 0
                     cls.RecvDataType = cls.SOI
@@ -261,15 +264,34 @@ class SmartPowerUtil(object):
         RevBuf2 = str_
         if len(RevBuf2) < 38:
             return False
-        voltage = (((((cls.Asciitochar(RevBuf2[6], RevBuf2[7]) << 8) + cls.Asciitochar(RevBuf2[4], RevBuf2[5])) << 8) + cls.Asciitochar(RevBuf2[2], RevBuf2[3])) << 8) + cls.Asciitochar(RevBuf2[0], RevBuf2[1])
-        current = (((((cls.Asciitochar(RevBuf2[14], RevBuf2[15]) << 8) + cls.Asciitochar(RevBuf2[12], RevBuf2[13])) << 8) + cls.Asciitochar(RevBuf2[10], RevBuf2[11])) << 8) + cls.Asciitochar(RevBuf2[8], RevBuf2[9])
-        capacity = (((((cls.Asciitochar(RevBuf2[22], RevBuf2[23]) << 8) + cls.Asciitochar(RevBuf2[20], RevBuf2[21])) << 8) + cls.Asciitochar(RevBuf2[18], RevBuf2[19])) << 8) + cls.Asciitochar(RevBuf2[16], RevBuf2[17])
-        cycles = (cls.Asciitochar(RevBuf2[26], RevBuf2[27]) << 8) + cls.Asciitochar(RevBuf2[24], RevBuf2[25])
-        soc2 = (cls.Asciitochar(RevBuf2[30], RevBuf2[31]) << 8) + cls.Asciitochar(RevBuf2[28], RevBuf2[29])
-        temperature = (cls.Asciitochar(RevBuf2[34], RevBuf2[35]) << 8) + cls.Asciitochar(RevBuf2[32], RevBuf2[33])
-        status = cls.Asciitochar(RevBuf2[36], RevBuf2[37])
-        print(cls.TAG + "status: " + str(status))
-        batteryEntity.setAfeStatus(cls.Asciitochar(RevBuf2[40], RevBuf2[41]))
+
+        # print("Voltage", GetValue(RevBuf2, 0, 7))
+        # print("Current", GetValue(RevBuf2, 8, 15))
+        # print("Capacity", GetValue(RevBuf2, 16, 23))
+        # print("Cycles", GetValue(RevBuf2, 24, 27))
+        voltage = cls.GetValue(RevBuf2, 0, 7)
+        current = cls.GetValue(RevBuf2, 8, 15)
+        capacity = cls.GetValue(RevBuf2, 16, 23)
+        cycles = cls.GetValue(RevBuf2, 24, 27)
+        soc2 = cls.GetValue(RevBuf2, 28, 31)
+        temperature = cls.GetValue(RevBuf2, 32, 35)
+        status = cls.GetValue(RevBuf2, 36, 37)
+        unknown = cls.GetValue(RevBuf2, 38, 39)
+        afestatus = cls.GetValue(RevBuf2, 40, 41)
+
+
+
+        # voltage = (((((cls.Asciitochar(RevBuf2[6], RevBuf2[7]) << 8) + cls.Asciitochar(RevBuf2[4], RevBuf2[5])) << 8) + cls.Asciitochar(RevBuf2[2], RevBuf2[3])) << 8) + cls.Asciitochar(RevBuf2[0], RevBuf2[1])
+        # current = (((((cls.Asciitochar(RevBuf2[14], RevBuf2[15]) << 8) + cls.Asciitochar(RevBuf2[12], RevBuf2[13])) << 8) + cls.Asciitochar(RevBuf2[10], RevBuf2[11])) << 8) + cls.Asciitochar(RevBuf2[8], RevBuf2[9])
+        # capacity = (((((cls.Asciitochar(RevBuf2[22], RevBuf2[23]) << 8) + cls.Asciitochar(RevBuf2[20], RevBuf2[21])) << 8) + cls.Asciitochar(RevBuf2[18], RevBuf2[19])) << 8) + cls.Asciitochar(RevBuf2[16], RevBuf2[17])
+        # cycles = (cls.Asciitochar(RevBuf2[26], RevBuf2[27]) << 8) + cls.Asciitochar(RevBuf2[24], RevBuf2[25])
+        # soc2 = (cls.Asciitochar(RevBuf2[30], RevBuf2[31]) << 8) + cls.Asciitochar(RevBuf2[28], RevBuf2[29])
+        # temperature = (cls.Asciitochar(RevBuf2[34], RevBuf2[35]) << 8) + cls.Asciitochar(RevBuf2[32], RevBuf2[33])
+        # status = cls.Asciitochar(RevBuf2[36], RevBuf2[37])
+        print(cls.TAG + "status: ", str(status))
+        print(cls.TAG + "unknown: ", str(unknown))
+        # batteryEntity.setAfeStatus(cls.Asciitochar(RevBuf2[40], RevBuf2[41]))
+        batteryEntity.setAfeStatus(afestatus)
         batteryEntity.setmVoltage(voltage)
         batteryEntity.setmCurrent(current)
         batteryEntity.setmSoc(soc2)
