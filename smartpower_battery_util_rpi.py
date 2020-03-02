@@ -192,7 +192,7 @@ class SmartPowerUtil(object):
                         j += 2
                     i1 = 0
                     while i1 < len(cls.RevBuf):
-                        print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1], int(str(cls.RevBuf[i1]), 16))
+                        print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1], chr(cls.RevBuf[i1]))
                         i1 += 1
                     print(cls.TAG, "broadcastUpdate: Chksum ==", Chksum)
                     print(cls.TAG, "broadcastUpdate: ", (((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
