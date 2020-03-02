@@ -239,7 +239,7 @@ class SmartPowerUtil(object):
         print("test handleMessage==", str_)
         # RevBuf2 = str_.getBytes()
         RevBuf2 = str_
-        if len(RevBuf2) < 1:
+        if len(RevBuf2) < 38:
             return False
         voltage = (((((cls.Asciitochar(RevBuf2[6], RevBuf2[7]) << 8) + cls.Asciitochar(RevBuf2[4], RevBuf2[5])) << 8) + cls.Asciitochar(RevBuf2[2], RevBuf2[3])) << 8) + cls.Asciitochar(RevBuf2[0], RevBuf2[1])
         current = (((((cls.Asciitochar(RevBuf2[14], RevBuf2[15]) << 8) + cls.Asciitochar(RevBuf2[12], RevBuf2[13])) << 8) + cls.Asciitochar(RevBuf2[10], RevBuf2[11])) << 8) + cls.Asciitochar(RevBuf2[8], RevBuf2[9])
