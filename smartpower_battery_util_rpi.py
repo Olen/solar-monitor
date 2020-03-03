@@ -144,10 +144,9 @@ class BatteryEntity():
         self.afeStatus = in_.readInt()
 
 
-class SmartPowerUtil2():
+class SmartPowerUtil():
 
     def __init__(self):
-        logging.debug("Initiating new SmartPowerUtil2")
         self.Current = 0
         self.EOI = 3
         self.INFO = 2
@@ -289,10 +288,6 @@ class SmartPowerUtil2():
             logging.debug("len message < 38: {}".format(len(RevBuf2)))
             return False
 
-        # print("Voltage", GetValue(RevBuf2, 0, 7))
-        # print("Current", GetValue(RevBuf2, 8, 15))
-        # print("Capacity", GetValue(RevBuf2, 16, 23))
-        # print("Cycles", GetValue(RevBuf2, 24, 27))
         voltage = self.getValue(RevBuf2, 0, 7)
         current = self.getValue(RevBuf2, 8, 15)
         capacity = self.getValue(RevBuf2, 16, 23)
@@ -316,7 +311,6 @@ class SmartPowerUtil2():
         batteryEntity.setmTemperature(temperature)
         batteryEntity.setmBatteryType(len(message))
         batteryEntity.setMsg(message)
-        # print("test voltage==", voltage, "==current==", current, "==soc==", soc2, "==capacity==", capacity, "==cycles==", cycles, "==status==", status, "==temperature==", temperature, "==str.length()==", len(str_))
         logging.info("Test voltage == {}, current == {}, soc == {}, capacity == {}, cycles == {}, status == {}, temperature == {}, len = {}".format(voltage, current, soc2, capacity, cycles, status, temperature, len(message)))
         return True
 
@@ -324,236 +318,6 @@ class SmartPowerUtil2():
 
 
 
-
-class SmartPowerUtil(object):
-    Current = 0
-    EOI = 3
-    INFO = 2
-    SOI = 1
-    RecvDataType = SOI
-    RevBuf = [None] * 122
-    Revindex = 0
-    Status = 0
-    TAG = "SmartPowerUtil"
-    end = 0
-    soc = 0
-
-
-#     broadcastUpdate Start b'\x0c\x0c\x0c\x923A330000B3020000' [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-#     broadcastUpdate End  [146, 51, 65, 51, 51, 48, 48, 48, 48, 66, 51, 48, 50, 48, 48, 48, 48, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-
-
-    @classmethod
-    def broadcastUpdate(cls, data):
-        # Gets the binary data from the BLE-device and converts it to a list of hex-values
-        print("broadcastUpdate Start", data, cls.RevBuf)
-        print("RevIndex", cls.Revindex)
-        print("SOI", cls.SOI)
-        print("RecvDataType start", cls.Revindex)
-        cmdData = ""
-        if data != None and len(data):
-            i = 0
-            while i < len(data):
-                print("Revindex ", i, cls.Revindex)
-                print("RevBuf begin", cls.RevBuf)
-                if cls.Revindex > 121:
-                    print("Revindex  > 121")
-                    cls.Revindex = 0
-                    cls.end = 0
-                    cls.RecvDataType = cls.SOI
-                print("RecvDataType ", i, cls.RecvDataType)
-                if cls.RecvDataType == 1:
-                    print("RecvDataType == 1")
-                    # if (data[i] & 255) != 146:
-                    # else:
-                    if (data[i] & 255) == 146:
-                        print("Data_1 == 146")
-                        print("RevBuf-01", cls.RevBuf)
-                        cls.RecvDataType = cls.INFO
-                        print("RevBuf-02", cls.RevBuf)
-                        bArr = cls.RevBuf
-                        print("RevBuf-03", cls.RevBuf)
-                        i2 = cls.Revindex
-                        print("RevBuf-04", cls.RevBuf)
-                        cls.Revindex = i2 + 1
-                        print("RevBuf-05", cls.RevBuf)
-                        if bArr[i2] != data[i]:
-                            print("X Old", bArr[i2], "New", data[i])
-                        bArr[i2] = data[i]
-                        print("RevBuf-06", cls.RevBuf)
-
-
-
-
-
-
-# RevBuf-05 [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-# RevBuf-06 [146, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-# Revindex  15 1
-# RevBuf begin [146, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-# RecvDataType  15 2
-# RecvDataType == 2
-# Revindex  16 2
-# RevBuf begin [146, 66, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-# RecvDataType  16 2
-# RecvDataType == 2
-# Revindex  17 3
-# RevBuf begin [146, 66, 56, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None]
-
-
-
-                elif cls.RecvDataType == 2:
-                    print("RecvDataType == 2")
-                    print("Data_i", data[i])
-                    bArr2 = cls.RevBuf
-                    i3 = cls.Revindex
-                    cls.Revindex = i3 + 1
-                    if bArr2[i3] != data[i]:
-                        print("Y Old", bArr2[i3], "New", data[i])
-                    bArr2[i3] = data[i]
-                    if data[i] == 12:
-                        print("Data_i == 12")
-                        print("cls_end", cls.end)
-                        print("cls_Revindex", cls.Revindex)
-                        if cls.end < 110:
-                            cls.end = cls.Revindex
-                        # if cls.Revindex != 121 and cls.Revindex != 66 and cls.Revindex != 88:
-                        # else:
-                        if cls.Revindex == 121 or cls.Revindex == 66 or cls.Revindex == 88:
-                            cls.RecvDataType = cls.EOI
-                    # else:
-                elif cls.RecvDataType == 3:
-                    print("RecvDataType == 3")
-                    Chksum = 0
-                    cls.end = 114
-                    j = 1
-                    while j < cls.end - 5:
-                        Chksum = int((cls.Asciitochar(cls.RevBuf[j], cls.RevBuf[j + 1]) + Chksum))
-                        j += 2
-                    i1 = 0
-                    while i1 < len(cls.RevBuf):
-                        if cls.RevBuf[i1] is not None:
-                            print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1], chr(cls.RevBuf[i1]))
-                        else:
-                            print("test broadcastUpdate ==", i1, ":", cls.RevBuf[i1])
-                        i1 += 1
-                    print(cls.TAG, "broadcastUpdate: Chksum ==", Chksum)
-                    print(cls.TAG, "broadcastUpdate: ", (((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2])))))
-                    print(cls.TAG, "broadcastUpdate: end ==", cls.end)
-                    if Chksum == ((int(cls.Asciitochar(cls.RevBuf[cls.end - 5], cls.RevBuf[cls.end - 4]))) << 8) + (int(cls.Asciitochar(cls.RevBuf[cls.end - 3], cls.RevBuf[cls.end - 2]))):
-                        # cmdData = str(cls.RevBuf, 1, cls.Revindex)
-                        print(cls.TAG, "revindex:", cls.Revindex)
-                        cmdData = cls.RevBuf[1:cls.Revindex]
-                        cls.Status = cls.GetValue(cls.RevBuf, 37, 38)
-                        cls.soc = cls.GetValue(cls.RevBuf, 29, 32)
-                        cls.current = cls.GetValue(cls.RevBuf, 9, 15)
-                        # cls.Status = cls.Asciitochar(cls.RevBuf[37], cls.RevBuf[38])
-                        # cls.soc = cls.Asciitochar(cls.RevBuf[31], cls.RevBuf[32])
-                        # cls.soc <<= 8
-                        # cls.soc += cls.Asciitochar(cls.RevBuf[29], cls.RevBuf[30])
-                        # cls.Current = cls.Asciitochar(cls.RevBuf[15], cls.RevBuf[16])
-                        # cls.Current <<= 8
-                        # cls.Current += cls.Asciitochar(cls.RevBuf[13], cls.RevBuf[14])
-                        # cls.Current <<= 8
-                        # cls.Current += cls.Asciitochar(cls.RevBuf[11], cls.RevBuf[12])
-                        # cls.Current <<= 8
-                        # cls.Current += cls.Asciitochar(cls.RevBuf[9], cls.RevBuf[10])
-                    cls.Revindex = 0
-                    cls.end = 0
-                    cls.RecvDataType = cls.SOI
-                i += 1
-        print("broadcastUpdate End", cmdData, cls.RevBuf)
-        return cmdData
-
-
-
-    @classmethod
-    def Asciitochar(cls, a, b):
-        x = int()
-        if a >= 48 and a <= 57:
-            x = a - 48
-        elif a < 65 or a > 70:
-            x = 0
-        else:
-            x = (a - 65) + 10
-        x2 = x << 4
-        if b >= 48 and b <= 57:
-            return x2 + (b - 48)
-        if b < 65 or b > 70:
-            return x2 + 0
-        return x2 + (b - 65) + 10
-
-    @classmethod
-    def GetValue(cls, buf, start, end):
-        # Reads "start" -> "end" from "buf" and return the hex-characters in the correct order
-        string = buf[start:end + 1]
-        print(string)
-        e = end + 1
-        b = end - 1
-        string = ""
-        while b >= start:
-            chrs = buf[b:e]
-            print(chrs)
-            e = b
-            b = b - 2
-            string += chr(chrs[0]) + chr(chrs[1])
-        return int(string, 16)
-
-
-    @classmethod
-    def handleMessage(cls, str_, batteryEntity):
-        # Accepts a list of hex-characters, and returns the human readable values into the batteryEntity object
-        if batteryEntity == None or str_ == None or "" == str_:
-            print("Empty buffer:", str_)
-            return False
-        print("test handleMessage ==", str_)
-        # RevBuf2 = str_.getBytes()
-        RevBuf2 = str_
-        if len(RevBuf2) < 38:
-            print("Buffer < 38")
-            return False
-
-        # print("Voltage", GetValue(RevBuf2, 0, 7))
-        # print("Current", GetValue(RevBuf2, 8, 15))
-        # print("Capacity", GetValue(RevBuf2, 16, 23))
-        # print("Cycles", GetValue(RevBuf2, 24, 27))
-        voltage = cls.GetValue(RevBuf2, 0, 7)
-        current = cls.GetValue(RevBuf2, 8, 15)
-        capacity = cls.GetValue(RevBuf2, 16, 23)
-        cycles = cls.GetValue(RevBuf2, 24, 27)
-        soc2 = cls.GetValue(RevBuf2, 28, 31)
-        temperature = cls.GetValue(RevBuf2, 32, 35)
-        status = cls.GetValue(RevBuf2, 36, 37)
-        unknown = cls.GetValue(RevBuf2, 38, 39)
-        afestatus = cls.GetValue(RevBuf2, 40, 41)
-
-
-
-        # voltage = (((((cls.Asciitochar(RevBuf2[6], RevBuf2[7]) << 8) + cls.Asciitochar(RevBuf2[4], RevBuf2[5])) << 8) + cls.Asciitochar(RevBuf2[2], RevBuf2[3])) << 8) + cls.Asciitochar(RevBuf2[0], RevBuf2[1])
-        # current = (((((cls.Asciitochar(RevBuf2[14], RevBuf2[15]) << 8) + cls.Asciitochar(RevBuf2[12], RevBuf2[13])) << 8) + cls.Asciitochar(RevBuf2[10], RevBuf2[11])) << 8) + cls.Asciitochar(RevBuf2[8], RevBuf2[9])
-        # capacity = (((((cls.Asciitochar(RevBuf2[22], RevBuf2[23]) << 8) + cls.Asciitochar(RevBuf2[20], RevBuf2[21])) << 8) + cls.Asciitochar(RevBuf2[18], RevBuf2[19])) << 8) + cls.Asciitochar(RevBuf2[16], RevBuf2[17])
-        # cycles = (cls.Asciitochar(RevBuf2[26], RevBuf2[27]) << 8) + cls.Asciitochar(RevBuf2[24], RevBuf2[25])
-        # soc2 = (cls.Asciitochar(RevBuf2[30], RevBuf2[31]) << 8) + cls.Asciitochar(RevBuf2[28], RevBuf2[29])
-        # temperature = (cls.Asciitochar(RevBuf2[34], RevBuf2[35]) << 8) + cls.Asciitochar(RevBuf2[32], RevBuf2[33])
-        # status = cls.Asciitochar(RevBuf2[36], RevBuf2[37])
-        print(cls.TAG + "status: ", str(status))
-        print(cls.TAG + "unknown: ", str(unknown))
-        # batteryEntity.setAfeStatus(cls.Asciitochar(RevBuf2[40], RevBuf2[41]))
-        batteryEntity.setAfeStatus(afestatus)
-        batteryEntity.setmVoltage(voltage)
-        batteryEntity.setmCurrent(current)
-        batteryEntity.setmSoc(soc2)
-        if batteryEntity.getmCapacityOld1() <= 0:
-            batteryEntity.setmCapacity(capacity)
-        elif abs(capacity - batteryEntity.getmCapacityOld1()) < 10000:
-            batteryEntity.setmCapacity(capacity)
-        batteryEntity.setmCycles(cycles)
-        batteryEntity.setmStatus(status)
-        batteryEntity.setmTemperature(temperature)
-        batteryEntity.setmBatteryType(len(str_))
-        batteryEntity.setMsg(str_)
-        print("test voltage==", voltage, "==current==", current, "==soc==", soc2, "==capacity==", capacity, "==cycles==", cycles, "==status==", status, "==temperature==", temperature, "==str.length()==", len(str_))
-        return True
 
 
 
@@ -575,7 +339,7 @@ class ReaderActivity():
     def __init__(self, device):
         self.batteryEntity = BatteryEntity(device)
         if self.smartPowerUtil is None:
-            self.smartPowerUtil = SmartPowerUtil2()
+            self.smartPowerUtil = SmartPowerUtil()
 
     def send(self, text):
         if self.mServiceBinder != None:
