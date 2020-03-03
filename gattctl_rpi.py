@@ -5,7 +5,15 @@ import sys
 from argparse import ArgumentParser
 import blegatt
 import time
+
+
 from smartpower_battery_util_rpi import *
+
+import logging 
+# import duallog
+# duallog.setup('solar-monitor', minLevel=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+
 
 # test
 HR_SVC_UUID =        '0000180d-0000-1000-8000-00805f9b34fb'
@@ -39,12 +47,12 @@ def validate_service_uuid(uuid):
     elif uuid == SOLARLINK_SERVICE_UUID:
         cur_batt_service = ('SOLARLINK_SERVICE', uuid)
     else:
-        print('Unrecognized Service / Solar device : ' + uuid)
+        logging.warning('Unrecognized Service / Solar device : {}'.format(uuid))
 
 # implementation of blegatt.DeviceManager, discovers any GATT device
 class DiscoverAnyDeviceManager(blegatt.DeviceManager):
     def device_discovered(self, device):
-        print("[%s] Discovered, alias = %s" % (device.mac_address, device.alias()))
+        logging.info("[{}] Discovered, alias = {}".format(device.mac_address, device.alias()))
         # self.stop_discovery()   # in case to stop after discovered one device
 
     def make_device(self, mac_address):
@@ -56,33 +64,34 @@ class ConnectAnyDevice(blegatt.Device):
     def __init__(self, mac_address, manager, auto_reconnect=False):
         super().__init__(mac_address=mac_address, manager=manager)
         self.auto_reconnect = auto_reconnect
+        self.reader_activity = None
 
     def connect(self):
-        print("Connecting...")
+        logging.info("[{}] Connecting...".format(self.mac_address))
         super().connect()
 
     def connect_succeeded(self):
         super().connect_succeeded()
-        print("[%s] Connected" % (self.mac_address))
+        logging.info("[{}] Connected".connecting(self.mac_address))
 
     def connect_failed(self, error):
         super().connect_failed(error)
-        print("[%s] Connection failed: %s" % (self.mac_address, str(error)))
+        logging.info("[{}] Connection failed: {}".format(self.mac_address, str(error)))
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
-        print("[%s] Disconnected" % (self.mac_address))
+        logging.info("[{}] Disconnected".format(self.mac_address))
         if self.auto_reconnect:
             self.connect()
 
     def services_resolved(self):
         super().services_resolved()
 
-        print("[%s] Resolved services" % (self.mac_address))
+        logging.info("[{}] Resolved services".format(self.mac_address))
         for service in self.services:
-            print("[%s]  Service [%s]" % (self.mac_address, service.uuid))
+            logging.info("[{}]  Service [{}]".format(self.mac_address, service.uuid))
             for characteristic in service.characteristics:
-                print("[%s]    Characteristic [%s]" % (self.mac_address, characteristic.uuid))
+                logging.info("[{}]    Characteristic [{}]".format(self.mac_address, characteristic.uuid))
                 # only for reading a characteristic
                 # for descriptor in characteristic.descriptors:
                     # print("[%s]\t\t\tDescriptor [%s] (%s)" % (self.mac_address, descriptor.uuid, descriptor.read_value()))
@@ -91,17 +100,17 @@ class ConnectAnyDevice(blegatt.Device):
             s for s in self.services
             if s.uuid == MERITSUN_SERVICE_UUID or s.uuid == TBENERGY_SERVICE_UUID or s.uuid == SOLARLINK_SERVICE_UUID or s.uuid == HR_SVC_UUID)
             # if s.uuid == HR_SVC_UUID)
-        print("Found dev notify serv [%s]" % device_notification_service)
+        logging.info("[{}] Found dev notify serv [{}]".format(self.mac_address, device_notification_service))
 
         device_notification_characteristic = next(
             c for c in device_notification_service.characteristics
             if c.uuid == MERITSUN_NOTIFY_UUID or c.uuid == TBENERGY_NOTIFY_UUID or c.uuid == SOLARLINK_NOTIFY_UUID or c.uuid == HR_MSRMT_UUID)
             # if c.uuid == HR_MSRMT_UUID)
-        print("Found dev notify char [%s] " %(device_notification_characteristic))
+        logging.info("[{}] Found dev notify char [{}]".format(self.mac_address, device_notification_characteristic))
 
         # if c.uuid == BODY_SNSR_LOC_UUID)
 
-        print("Subscribing to notify char [%s]" % device_notification_characteristic)
+        logging.info("[{}] Subscribing to notify char [{}]".format(self.mac_address, device_notification_characteristic))
         device_notification_characteristic.enable_notifications()
 
     # only for reading a characteristic
@@ -111,19 +120,24 @@ class ConnectAnyDevice(blegatt.Device):
 
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
+        if self.reader_activity is None:
+            self.reader_activity = ReaderActivity(blegatt.Device)
+            logging.debug("ReaderActivity: {}".format(self.reader_activity))
         # print("characteristic value:", value.decode("utf-8"))
-        print("characteristic value:", value)
+        logging.debug("[{}] Received update".format(self.mac_address))
+        logging.debug("[{}]  characteristic id {} value: {}".format(self.mac_address, characteristic.uuid, value))
         # process the received "value"
-        ReaderActivity.setValueOn(ReaderActivity(blegatt.Device), blegatt.Device, value)
+        self.reader_activity.setValueOn(blegatt.Device, value)
+        # ReaderActivity.setValueOn(ReaderActivity(blegatt.Device), blegatt.Device, value)
         # Disable notifications - enable_notifications(False)  !?
 
     def characteristic_enable_notifications_succeeded(self, characteristic):
         super().characteristic_enable_notifications_succeeded(characteristic)
-        print("Notifications enabled for: [%s]" %(characteristic.uuid))
+        logging.info("[{}] Notifications enabled for: [{}]".format(self.mac_address, characteristic.uuid))
 
     def characteristic_enable_notifications_failed(self, characteristic, error):
         super().characteristic_enable_notifications_failed(characteristic, error)
-        print("Enabling notifications failed for: [%s] with error [%s]" %(characteristic.uuid, str(error)))
+        logging.warning("[{}] Enabling notifications failed for: [{}] with error [{}]".format(self.mac_address, characteristic.uuid, str(error)))
 
 
 def main():
@@ -148,29 +162,30 @@ def main():
     global device_manager
     device_manager = DiscoverAnyDeviceManager(adapter_name=args.adapter)
 
-    print("Device status - Powered: ", device_manager.is_adapter_powered)
+    logging.info("Device status - Powered: {}".format(device_manager.is_adapter_powered))
     if not device_manager.is_adapter_powered:
-        print("Powering on the device ...")
+        logging.info("Powering on the device ...")
         device_manager.is_adapter_powered = True
-        print("Powered on")
+        logging.info("Powered on")
 
     device_manager.update_devices()
-    print("Starting discovery...")
+    logging.info("Starting discovery...")
     global dev_services_list
     # scan all the advertisements from the services list
     device_manager.start_discovery(dev_services_list[0:])
     # delay / sleep for 10 ~ 15 sec to complete the scanning
     time.sleep(15)
     device_manager.stop_discovery()
-    print("Found Solar / battery services: ",len(device_manager.devices()))
-    print("Trying to connect...")
+    logging.info("Found {} Solar / battery services".format(len(device_manager.devices())))
+    logging.info("Trying to connect...")
     # device = ConnectAnyDevice(mac_address=args.connect, manager=device_manager)
     # device.connect()
     global dev_found_list
     dev_found_list = device_manager.devices()
     for dev in device_manager.devices():
-        device = ConnectAnyDevice(mac_address=dev.mac_address, manager=device_manager)
-        device.connect()
+        if dev.mac_address != "d8:64:8c:66:f4:d4":
+            device = ConnectAnyDevice(mac_address=dev.mac_address, manager=device_manager)
+            device.connect()
 
     # elif args.auto:
         # device = ConnectAnyDevice(mac_address=args.auto, manager=device_manager, auto_reconnect=True)
@@ -181,7 +196,7 @@ def main():
         device.disconnect()
         return
 
-    print("Terminate with Ctrl+C")
+    logging.info("Terminate with Ctrl+C")
     try:
         device_manager.run()
     except KeyboardInterrupt:
