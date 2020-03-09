@@ -5,6 +5,8 @@ import os
 import sys
 import blegatt
 import time
+from datalogger import DataLogger
+from datetime import datetime
 
 # import duallog
 import logging
@@ -164,16 +166,17 @@ class SmartPowerUtil():
     def getValue(self, buf, start, end):
         # Reads "start" -> "end" from "buf" and return the hex-characters in the correct order
         string = buf[start:end + 1]
-        logging.debug(string)
+        # logging.debug(string)
         e = end + 1
         b = end - 1
         string = ""
         while b >= start:
             chrs = buf[b:e]
-            logging.debug(chrs)
+            # logging.debug(chrs)
             e = b
             b = b - 2
             string += chr(chrs[0]) + chr(chrs[1])
+            # logging.debug(string)
         try: 
             ret = int(string, 16)
         except Exception as e:
@@ -205,10 +208,10 @@ class SmartPowerUtil():
         while j < self.end - 5:
             Chksum1 = int((self.asciitochar(buf[j], buf[j + 1]) + Chksum1))
             j += 2
-        logging.debug("Checksum 1: {}".format(Chksum1))
+        # logging.debug("Checksum 1: {}".format(Chksum1))
 
         Chksum2 = ((int(self.asciitochar(buf[j], buf[j + 1]))) << 8) + (int(self.asciitochar(buf[j + 2], buf[j + 3])))
-        logging.debug("Checksum 2: {}".format(Chksum2))
+        # logging.debug("Checksum 2: {}".format(Chksum2))
         if Chksum1 == Chksum2:
             return True
         return False
@@ -216,38 +219,38 @@ class SmartPowerUtil():
 
     def broadcastUpdate(self, data):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
-        logging.debug("broadcastUpdate Start {} {}".format(data, self.RevBuf))
-        logging.debug("RevIndex {}".format(self.Revindex))
-        logging.debug("SOI {}".format(self.SOI))
-        logging.debug("RecvDataType start {}".format(self.Revindex))
+        # logging.debug("broadcastUpdate Start {} {}".format(data, self.RevBuf))
+        # logging.debug("RevIndex {}".format(self.Revindex))
+        # logging.debug("SOI {}".format(self.SOI))
+        # logging.debug("RecvDataType start {}".format(self.Revindex))
         cmdData = ""
         if data != None and len(data):
             i = 0
             while i < len(data):
-                logging.debug("Revindex {} {}".format(i, self.Revindex))
-                logging.debug("RevBuf begin {}".format(self.RevBuf))
+                # logging.debug("Revindex {} {}".format(i, self.Revindex))
+                # logging.debug("RevBuf begin {}".format(self.RevBuf))
                 if self.Revindex > 121:
-                    logging.debug("Revindex  > 121 - parsing done")
+                    # logging.debug("Revindex  > 121 - parsing done")
                     self.Revindex = 0
                     self.end = 0
                     self.RecvDataType = self.SOI
-                logging.debug("RecvDataType {} {}".format(i, self.RecvDataType))
+                # logging.debug("RecvDataType {} {}".format(i, self.RecvDataType))
                 if self.RecvDataType == self.SOI:
-                    logging.debug("RecvDataType == 1 -> SOI")
-                    logging.debug("Data_1 == {} &255 == {}".format(data[i], data[i] & 255))
+                    # logging.debug("RecvDataType == 1 -> SOI")
+                    # logging.debug("Data_1 == {} &255 == {}".format(data[i], data[i] & 255))
                     if (data[i] & 255) == 146:
-                        logging.debug("Data_1 & 255 == 146 start of info")
+                        # logging.debug("Data_1 & 255 == 146 start of info")
                         self.RecvDataType = self.INFO
                         self.RevBuf[self.Revindex] = data[i]
                         self.Revindex = self.Revindex + 1
                 elif self.RecvDataType == self.INFO:
-                    logging.debug("RecvDataType == 2 -> INFO")
-                    logging.debug("Data_1 == {}".format(data[i]))
+                    # logging.debug("RecvDataType == 2 -> INFO")
+                    # logging.debug("Data_1 == {}".format(data[i]))
                     self.RevBuf[self.Revindex] = data[i]
                     self.Revindex = self.Revindex + 1
 
                     if data[i] == 12:
-                        logging.debug("Data_i == 12 - end: {} Revindex {}".format(self.end, self.Revindex))
+                        # logging.debug("Data_i == 12 - end: {} Revindex {}".format(self.end, self.Revindex))
                         if self.end < 110:
                             self.end = self.Revindex
                         # if self.Revindex != 121 and self.Revindex != 66 and self.Revindex != 88:
@@ -256,11 +259,11 @@ class SmartPowerUtil():
                             self.RecvDataType = self.EOI
                     # else:
                 elif self.RecvDataType == self.EOI:
-                    logging.debug("RecvDataType == 3 -> EOI")
-                    logging.debug("Validate Checksum: {}".format(self.validateChecksum(self.RevBuf)))
+                    # logging.debug("RecvDataType == 3 -> EOI")
+                    # logging.debug("Validate Checksum: {}".format(self.validateChecksum(self.RevBuf)))
                     if self.validateChecksum(self.RevBuf):
                         # cmdData = str(self.RevBuf, 1, self.Revindex)
-                        logging.debug("{} revindex: {}".format(self.TAG, self.Revindex))
+                        # logging.debug("{} revindex: {}".format(self.TAG, self.Revindex))
                         cmdData = self.RevBuf[1:self.Revindex]
                         self.Status = self.getValue(self.RevBuf, 37, 38)
                         self.soc = self.getValue(self.RevBuf, 29, 32)
@@ -269,7 +272,7 @@ class SmartPowerUtil():
                     self.end = 0
                     self.RecvDataType = self.SOI
                 i += 1
-        logging.debug("broadcastUpdate End cmdData: {} RevBuf {}".format(cmdData, self.RevBuf))
+        # logging.debug("broadcastUpdate End cmdData: {} RevBuf {}".format(cmdData, self.RevBuf))
         return cmdData
 
 
@@ -281,37 +284,74 @@ class SmartPowerUtil():
         # Accepts a list of hex-characters, and returns the human readable values into the batteryEntity object
         if batteryEntity == None or message == None or "" == message:
             return False
-        logging.debug("test handleMessage == {}".format(message))
+        # logging.debug("test handleMessage == {}".format(message))
         # RevBuf2 = str_.getBytes()
         RevBuf2 = message
         if len(RevBuf2) < 38:
-            logging.debug("len message < 38: {}".format(len(RevBuf2)))
+            # logging.debug("len message < 38: {}".format(len(RevBuf2)))
             return False
 
         voltage = self.getValue(RevBuf2, 0, 7)
+        # logging.debug("getVoltage {}".format(voltage))
         current = self.getValue(RevBuf2, 8, 15)
+        # logging.debug("getCurrent {}".format(current))
         capacity = self.getValue(RevBuf2, 16, 23)
+        # logging.debug("getCapacity {}".format(capacity))
         cycles = self.getValue(RevBuf2, 24, 27)
+        # logging.debug("getCycles {}".format(cycles))
         soc2 = self.getValue(RevBuf2, 28, 31)
+        # logging.debug("getSoC {}".format(soc2))
         temperature = self.getValue(RevBuf2, 32, 35)
+        # logging.debug("getTemperature {}".format(temperature))
         status = self.getValue(RevBuf2, 36, 37)
+        # logging.debug("getStatus {}".format(status))
         unknown = self.getValue(RevBuf2, 38, 39)
+        # logging.debug("getUnknown {}".format(unknown))
         afestatus = self.getValue(RevBuf2, 40, 41)
+        # logging.debug("getAfeStatus {}".format(afestatus))
+
+        unknown = self.getValue(RevBuf2, 42, 45)
+        # logging.debug("getUnknown A {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 44, 47)
+        # logging.debug("getUnknown B {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 42, 43)
+        # logging.debug("getUnknown c {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 44, 45)
+        # logging.debug("getUnknown d {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 46, 47)
+        # logging.debug("getUnknown {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 48, 49)
+        # logging.debug("getUnknown {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 50, 51)
+        # logging.debug("getUnknown {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 52, 53)
+        # logging.debug("getUnknown {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 54, 55)
+        # logging.debug("getUnknown {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 56, 57)
+        # logging.debug("getUnknown {}".format(unknown))
+        unknown = self.getValue(RevBuf2, 58, 59)
+        # logging.debug("getUnknown {}".format(unknown))
 
         batteryEntity.setAfeStatus(afestatus)
-        batteryEntity.setmVoltage(voltage)
-        batteryEntity.setmCurrent(current)
-        batteryEntity.setmSoc(soc2)
+        if voltage > 0:
+            batteryEntity.setmVoltage(voltage)
+        if current < 4000000 and current > -4000000:
+            batteryEntity.setmCurrent(current)
+        if soc2 > 0:
+            batteryEntity.setmSoc(soc2)
         if batteryEntity.getmCapacityOld1() <= 0:
             batteryEntity.setmCapacity(capacity)
         elif abs(capacity - batteryEntity.getmCapacityOld1()) < 10000:
             batteryEntity.setmCapacity(capacity)
-        batteryEntity.setmCycles(cycles)
+        if cycles > 0:
+            batteryEntity.setmCycles(cycles)
         batteryEntity.setmStatus(status)
-        batteryEntity.setmTemperature(temperature)
+        if temperature > 0:
+            batteryEntity.setmTemperature(temperature)
         batteryEntity.setmBatteryType(len(message))
         batteryEntity.setMsg(message)
-        logging.info("Test voltage == {}, current == {}, soc == {}, capacity == {}, cycles == {}, status == {}, temperature == {}, len = {}".format(voltage, current, soc2, capacity, cycles, status, temperature, len(message)))
+        logging.debug("Test voltage == {}, current == {}, soc == {}, capacity == {}, cycles == {}, status == {}, temperature == {}, len = {}".format(voltage, current, soc2, capacity, cycles, status, temperature, len(message)))
         return True
 
 
@@ -337,6 +377,8 @@ class ReaderActivity():
     smartPowerUtil = None
 
     def __init__(self, device):
+        self.device = device
+        self.datalogger = DataLogger(config['datalogger']['url'], config['datalogger']['token'])
         self.batteryEntity = BatteryEntity(device)
         if self.smartPowerUtil is None:
             self.smartPowerUtil = SmartPowerUtil()
@@ -355,31 +397,31 @@ class ReaderActivity():
             # setValueOn(device, data)
 
     def setValueOn(self, device, data):
-        logging.debug("setValueOn starting with data {} from {}".format(data, device))
+        # logging.debug("setValueOn starting with data {} from {}".format(data, device))
         retCmdData = self.smartPowerUtil.broadcastUpdate(data)
-        logging.debug("SmartPowerUtil.broadcastUpdate done - running handleMessage on {}".format(retCmdData))
+        # logging.debug("SmartPowerUtil.broadcastUpdate done - running handleMessage on {}".format(retCmdData))
         if self.smartPowerUtil.handleMessage(retCmdData, self.batteryEntity):
             logCumulativeData = [None] * 8
             #  for 8 fields to save to log file
             #  Current A
             # self.tvBattCur.setText("{:.1f}".format([None] * ))
-            self.tvBattCur = self.batteryEntity.getmCurrent() / 1000;
-            logging.info("Current: {}".format(self.tvBattCur))
+            self.tvBattCur = round(self.batteryEntity.getmCurrent() / 1000, 1);
+            self.datalogger.log(self.device.alias(), 'current', self.tvBattCur)
 
-            self.tvBattVolt = self.batteryEntity.getmVoltage() / 1000;
-            logging.info("Voltage: {}".format(self.tvBattVolt))
+            self.tvBattVolt = round(self.batteryEntity.getmVoltage() / 1000, 1);
+            self.datalogger.log(self.device.alias(), 'voltage', self.tvBattVolt)
 
             self.tvBattTemp = (self.batteryEntity.getmTemperature() - 2731) / 10
-            logging.info("Temperature: {}".format(self.tvBattTemp))
+            self.datalogger.log(self.device.alias(), 'temperature', self.tvBattTemp)
 
             self.tvBattSoC = self.batteryEntity.getmSoc()
-            logging.info("SoC {}%".format(self.tvBattSoC))
+            self.datalogger.log(self.device.alias(), 'soc', self.tvBattSoC)
 
-            self.tvCapacity = self.batteryEntity.getmCapacity() / 1000.0
-            logging.info("Capacity {}".format(self.tvCapacity))
+            self.tvCapacity = round(self.batteryEntity.getmCapacity() / 1000, 1)
+            self.datalogger.log(self.device.alias(), 'capacity', self.tvCapacity)
 
             self.tvCycles = self.batteryEntity.getmCycles()
-            logging.info("Cycles {}".format(self.tvCycles))
+            self.datalogger.log(self.device.alias(), 'cycles', self.tvCycles)
 
             #  Status
             if (float(self.batteryEntity.getmCurrent())) > 20.0:
@@ -391,7 +433,7 @@ class ReaderActivity():
             else:
                 self.tvState = "Standby"
                 logCumulativeData[6] = "Standby"
-            logging.info("State {}".format(self.tvState))
+            self.datalogger.log(self.device.alias(), 'state', self.tvState)
             #  Health
             if (float(self.batteryEntity.getmCycles())) > 2000.0:
                 self.tvHealth = "Good"
@@ -399,9 +441,12 @@ class ReaderActivity():
             else:
                 self.tvHealth = "Perfect"
                 logCumulativeData[7] = "Perfect"
-            logging.info("Health {}".format(self.tvHealth))
+            self.datalogger.log(self.device.alias(), 'health', self.tvHealth)
             # writeLogToFile(logCumulativeData)
 
     def clearCumulativeLog(self):
         self.cumulativeLog = ""
+
+
+
 

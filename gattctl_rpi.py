@@ -5,14 +5,16 @@ import sys
 from argparse import ArgumentParser
 import blegatt
 import time
-
+import configparser
 
 from smartpower_battery_util_rpi import *
 
+
+
 import logging 
-# import duallog
-# duallog.setup('solar-monitor', minLevel=logging.INFO)
-logging.basicConfig(level=logging.DEBUG)
+import duallog
+duallog.setup('solar-monitor', minLevel=logging.INFO)
+# logging.basicConfig(level=logging.DEBUG)
 
 
 # test
@@ -33,6 +35,7 @@ SOLARLINK_SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb'
 # only devices with these Service UUID's will be scanned & connected to.
 # dev_services_list = [HR_SVC_UUID, MERITSUN_SERVICE_UUID, TBENERGY_SERVICE_UUID, SOLARLINK_SERVICE_UUID, BIT16_SVC_UUID]
 dev_services_list = [MERITSUN_SERVICE_UUID, TBENERGY_SERVICE_UUID, SOLARLINK_SERVICE_UUID]
+dev_notify_list = [MERITSUN_NOTIFY_UUID, TBENERGY_NOTIFY_UUID, SOLARLINK_NOTIFY_UUID]
 device_manager = None
 
 dev_found_list = []
@@ -61,7 +64,7 @@ class DiscoverAnyDeviceManager(blegatt.DeviceManager):
 
 # implementation of blegatt.Device, connects to any GATT device
 class ConnectAnyDevice(blegatt.Device):
-    def __init__(self, mac_address, manager, auto_reconnect=False):
+    def __init__(self, mac_address, manager, config, auto_reconnect=False):
         super().__init__(mac_address=mac_address, manager=manager)
         self.auto_reconnect = auto_reconnect
         self.reader_activity = None
@@ -72,7 +75,7 @@ class ConnectAnyDevice(blegatt.Device):
 
     def connect_succeeded(self):
         super().connect_succeeded()
-        logging.info("[{}] Connected".connecting(self.mac_address))
+        logging.info("[{}] Connected to {}".format(self.mac_address, self.alias()))
 
     def connect_failed(self, error):
         super().connect_failed(error)
@@ -86,6 +89,7 @@ class ConnectAnyDevice(blegatt.Device):
 
     def services_resolved(self):
         super().services_resolved()
+        logging.info("[{}] Connected to {}".format(self.mac_address, self.alias()))
 
         logging.info("[{}] Resolved services".format(self.mac_address))
         for service in self.services:
@@ -98,19 +102,21 @@ class ConnectAnyDevice(blegatt.Device):
 
         device_notification_service = next(
             s for s in self.services
-            if s.uuid == MERITSUN_SERVICE_UUID or s.uuid == TBENERGY_SERVICE_UUID or s.uuid == SOLARLINK_SERVICE_UUID or s.uuid == HR_SVC_UUID)
+            if s.uuid in dev_services_list)
+            # if s.uuid == MERITSUN_SERVICE_UUID or s.uuid == TBENERGY_SERVICE_UUID or s.uuid == SOLARLINK_SERVICE_UUID or s.uuid == HR_SVC_UUID)
             # if s.uuid == HR_SVC_UUID)
-        logging.info("[{}] Found dev notify serv [{}]".format(self.mac_address, device_notification_service))
+        logging.info("[{}] Found dev notify serv [{}]".format(self.mac_address, device_notification_service.uuid))
 
         device_notification_characteristic = next(
             c for c in device_notification_service.characteristics
-            if c.uuid == MERITSUN_NOTIFY_UUID or c.uuid == TBENERGY_NOTIFY_UUID or c.uuid == SOLARLINK_NOTIFY_UUID or c.uuid == HR_MSRMT_UUID)
+            if c.uuid in dev_notify_list)
+            # if c.uuid == MERITSUN_NOTIFY_UUID or c.uuid == TBENERGY_NOTIFY_UUID or c.uuid == SOLARLINK_NOTIFY_UUID or c.uuid == HR_MSRMT_UUID)
             # if c.uuid == HR_MSRMT_UUID)
-        logging.info("[{}] Found dev notify char [{}]".format(self.mac_address, device_notification_characteristic))
+        logging.info("[{}] Found dev notify char [{}]".format(self.mac_address, device_notification_characteristic.uuid))
 
         # if c.uuid == BODY_SNSR_LOC_UUID)
 
-        logging.info("[{}] Subscribing to notify char [{}]".format(self.mac_address, device_notification_characteristic))
+        logging.info("[{}] Subscribing to notify char [{}]".format(self.mac_address, device_notification_characteristic.uuid))
         device_notification_characteristic.enable_notifications()
 
     # only for reading a characteristic
@@ -121,13 +127,15 @@ class ConnectAnyDevice(blegatt.Device):
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
         if self.reader_activity is None:
-            self.reader_activity = ReaderActivity(blegatt.Device)
-            logging.debug("ReaderActivity: {}".format(self.reader_activity))
+            # self.reader_activity = ReaderActivity(blegatt.Device)
+            self.reader_activity = ReaderActivity(self, config)
+            logging.debug("ReaderActivity for: {}".format(self.alias()))
         # print("characteristic value:", value.decode("utf-8"))
         logging.debug("[{}] Received update".format(self.mac_address))
         logging.debug("[{}]  characteristic id {} value: {}".format(self.mac_address, characteristic.uuid, value))
         # process the received "value"
-        self.reader_activity.setValueOn(blegatt.Device, value)
+        self.reader_activity.setValueOn(self, value)
+        # self.reader_activity.setValueOn(blegatt.Device, value)
         # ReaderActivity.setValueOn(ReaderActivity(blegatt.Device), blegatt.Device, value)
         # Disable notifications - enable_notifications(False)  !?
 
@@ -141,6 +149,8 @@ class ConnectAnyDevice(blegatt.Device):
 
 
 def main():
+    config = configparser.ConfigParser()
+    config.read('solar-monitor.ini')
     arg_parser = ArgumentParser(description="GATT SDK Demo")
     arg_parser.add_argument(
         '--adapter',
@@ -183,8 +193,9 @@ def main():
     global dev_found_list
     dev_found_list = device_manager.devices()
     for dev in device_manager.devices():
+        # if dev.mac_address != "d8:64:8c:66:f4:d4" and dev.mac_address != "7c:01:0a:41:ca:f9":
         if dev.mac_address != "d8:64:8c:66:f4:d4":
-            device = ConnectAnyDevice(mac_address=dev.mac_address, manager=device_manager)
+            device = ConnectAnyDevice(mac_address=dev.mac_address, manager=device_manager, config)
             device.connect()
 
     # elif args.auto:
