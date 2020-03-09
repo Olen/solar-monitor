@@ -9,3 +9,7 @@ This utility monitors defined BLE-devices, and sends parsed data to a remote ser
 * powerutil.py      Utils for parsing and interpreting data from the BLE-devices
 * datalogger.py     Class for pushing data to remote servers
 
+Also
+
+* solar-monitor.service - A systemd service-description for auto-starting the service
+* solar-monitor.ini.dist  Configuration-file. To be modified and renamed to solar-monitor.ini
