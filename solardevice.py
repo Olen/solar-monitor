@@ -18,8 +18,9 @@ import logging
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
 from datalogger import DataLogger
+from smartpowerutil import SmartPowerUtil
 
-from smartpower_battery_util_rpi import *
+
 
 import logging 
 import duallog
@@ -36,12 +37,14 @@ class SolarDeviceManager(blegatt.DeviceManager):
 
 # implementation of blegatt.Device, connects to selected GATT device
 class SolarDevice(blegatt.Device):
-    global config      
-    def __init__(self, mac_address, manager, logger_name = 'unknown'):
+    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False):
         super().__init__(mac_address=mac_address, manager=manager)
-        self.auto_reconnect = config.getboolean('monitor', 'reconnect')
+        self.auto_reconnect = reconnect
         self.reader_activity = None
         self.logger_name = logger_name
+        self.services_list = []
+        self.notify_list = []
+        self.datalogger = None
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice()
@@ -51,6 +54,12 @@ class SolarDevice(blegatt.Device):
             self.entities = PowerDevice()
 
         self.smartPowerUtil = SmartPowerUtil(self.alias, self.entities)  
+
+    def add_services(self, services_list, notify_list):
+        self.services_list = services_list
+        self.notify_list = notify_list
+    def add_datalogger(self, datalogger):
+        self.datalogger = datalogger
 
     @property
     def alias(self):
@@ -89,12 +98,12 @@ class SolarDevice(blegatt.Device):
 
         device_notification_service = next(
             s for s in self.services
-            if s.uuid in dev_services_list)
+            if s.uuid in self.services_list)
         logging.info("[{}] Found dev notify serv [{}]".format(self.logger_name, device_notification_service.uuid))
 
         device_notification_characteristic = next(
             c for c in device_notification_service.characteristics
-            if c.uuid in dev_notify_list)
+            if c.uuid in self.notify_list)
         logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
 
         logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
@@ -107,23 +116,23 @@ class SolarDevice(blegatt.Device):
 
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
-        logging.debug("[{}] Received update".format(self.logger_name))
-        logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
+        # logging.debug("[{}] Received update".format(self.logger_name))
+        # logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
         # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
         # retCmdData = self.smartPowerUtil.broadcastUpdate(value)
         # if self.smartPowerUtil.handleMessage(retCmdData):
         if self.smartPowerUtil.broadcastUpdate(value):
-            datalogger.log(self.logger_name, 'current', self.entities.current)
-            datalogger.log(self.logger_name, 'voltage', self.entities.voltage)
-            datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
-            datalogger.log(self.logger_name, 'soc', self.entities.soc)
-            datalogger.log(self.logger_name, 'capacity', self.entities.capacity)
-            datalogger.log(self.logger_name, 'cycles', self.entities.charge_cycles)
-            datalogger.log(self.logger_name, 'state', self.entities.state)
-            datalogger.log(self.logger_name, 'health', self.entities.health)
+            self.datalogger.log(self.logger_name, 'current', self.entities.current)
+            self.datalogger.log(self.logger_name, 'voltage', self.entities.voltage)
+            self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
+            self.datalogger.log(self.logger_name, 'soc', self.entities.soc)
+            self.datalogger.log(self.logger_name, 'capacity', self.entities.capacity)
+            self.datalogger.log(self.logger_name, 'cycles', self.entities.charge_cycles)
+            self.datalogger.log(self.logger_name, 'state', self.entities.state)
+            self.datalogger.log(self.logger_name, 'health', self.entities.health)
             for cell in self.entities.cell_mvoltage:
                 if self.entities.cell_mvoltage[cell] > 0:
-                    datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
+                    self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
 
             # logging.info("Cell voltage: {}".format(self.entities.cell_voltage))
 
@@ -274,11 +283,11 @@ class PowerDevice():
         for var in self.__dict__:
             if var != "_msg":
                 out = "{} {} == {},".format(out, var, self.__dict__[var])
-        logging.info(out)
+        logging.debug(out)
 
     def value_changed(self, var, was, val):
         if float(was) != float(val):
-            logging.info("Value of {} changed from {} to {}".format(var, was, val))
+            logging.debug("Value of {} changed from {} to {}".format(var, was, val))
             self.dumpall()
 
 

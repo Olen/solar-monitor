@@ -101,25 +101,29 @@ class SmartPowerUtil():
         if data != None and len(data):
             i = 0
             while i < len(data):
-                # logging.debug("Revindex {} {}".format(i, self.Revindex))
+                # logging.debug("Revindex {} {} Data: {}".format(i, self.Revindex, data[i]))
                 # logging.debug("RevBuf begin {}".format(self.RevBuf))
                 if self.Revindex > 121:
                     # logging.debug("Revindex  > 121 - parsing done")
                     self.Revindex = 0
                     self.end = 0
                     self.RecvDataType = self.SOI
+                # if data[i] == 146:
+                    # logging.debug("Data_1 == 146 start of info")
+                    # self.RecvDataType = self.INFO
+                    # self.Revindex = 0
                 # logging.debug("RecvDataType {} {}".format(i, self.RecvDataType))
                 if self.RecvDataType == self.SOI:
                     # logging.debug("RecvDataType == 1 -> SOI")
                     # logging.debug("Data_1 == {} &255 == {}".format(data[i], data[i] & 255))
-                    if (data[i] & 255) == 146:
+                    if data[i] == 146:
                         # logging.debug("Data_1 & 255 == 146 start of info")
                         self.RecvDataType = self.INFO
                         self.RevBuf[self.Revindex] = data[i]
                         self.Revindex = self.Revindex + 1
                 elif self.RecvDataType == self.INFO:
                     # logging.debug("RecvDataType == 2 -> INFO")
-                    # logging.debug("Data_1 == {}".format(data[i]))
+                    # logging.debug("Revindex {} Data_1 == {}".format(self.Revindex, data[i]))
                     self.RevBuf[self.Revindex] = data[i]
                     self.Revindex = self.Revindex + 1
 
@@ -129,7 +133,8 @@ class SmartPowerUtil():
                             self.end = self.Revindex
                         # if self.Revindex != 121 and self.Revindex != 66 and self.Revindex != 88:
                         # else:
-                        if self.Revindex == 121 or self.Revindex == 66 or self.Revindex == 88:
+                    # if self.Revindex == 121 or self.Revindex == 66 or self.Revindex == 88:
+                        if self.Revindex == 121:
                             self.RecvDataType = self.EOI
                     # else:
                 elif self.RecvDataType == self.EOI:
