@@ -11,10 +11,9 @@ from solardevice import SolarDeviceManager, SolarDevice, PowerDevice, BatteryDev
 from smartpowerutil import SmartPowerUtil
 from datalogger import DataLogger
 
-
 import logging 
 import duallog
-duallog.setup('solar-monitor', minLevel=logging.INFO)
+duallog.setup('solar-monitor', minLevel=logging.INFO, rotation='daily', keep=30)
 # duallog.setup('solar-monitor', minLevel=logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
