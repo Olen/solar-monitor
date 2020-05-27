@@ -116,8 +116,8 @@ class SolarDevice(blegatt.Device):
 
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
-        # logging.debug("[{}] Received update".format(self.logger_name))
-        # logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
+        logging.debug("[{}] Received update".format(self.logger_name))
+        logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
         # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
         # retCmdData = self.smartPowerUtil.broadcastUpdate(value)
         # if self.smartPowerUtil.handleMessage(retCmdData):

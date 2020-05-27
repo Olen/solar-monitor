@@ -43,7 +43,7 @@ class SLinkRealTimeMonitor():
     mTimerout = 2000
 
     def __init__(self, timeout):
-        super(self).__init__()
+        # super(self).__init__()
         self.mTimerout = timeout
         self.mIsActive = True
 
