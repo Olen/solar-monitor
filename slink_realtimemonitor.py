@@ -12,6 +12,7 @@ from datetime import datetime
 from slinkdata import SLinkData
 from slink_checksumcrc import ChecksumCRC
 from slink_modbusdata import ModbusData
+from slink_maincommon import MainCommon
 
 from datalogger import DataLogger
 
@@ -26,6 +27,7 @@ class SLinkRealTimeMonitor():
     mLoadOptMod = 0
     mLoadSwitchStatusSB = None
     # mMessageHandler = Handler()
+    loadToggleSwitchOn = True
 
 #  Base class
 
@@ -116,6 +118,12 @@ class SLinkRealTimeMonitor():
         return True
 
 #  // Base class
+
+    def LoadSwitchOnClick(self):
+        if loadToggleSwitchOn :
+            self.MainCommon.SendUartData(ModbusData.BuildWriteRegCmd(self.mDeviceId, 266, 1))
+        else :
+            self.MainCommon.SendUartData(ModbusData.BuildWriteRegCmd(self.mDeviceId, 266, 0))
 
 
     def mMessageHandler(self, msg):
