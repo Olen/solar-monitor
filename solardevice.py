@@ -19,7 +19,7 @@ import logging
 
 from datalogger import DataLogger
 from smartpowerutil import SmartPowerUtil
-
+from slink_maincommon import MainCommon
 
 
 import logging 
@@ -144,6 +144,22 @@ class SolarDevice(blegatt.Device):
         super().characteristic_enable_notifications_failed(characteristic, error)
         logging.warning("[{}] Enabling notifications failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
 
+    def write_value(self, val):
+        device_service = next(
+            s for s in self.services
+            if s.uuid == MainCommon.SOLARLINK_WRITEDATA_SERVICE_UUID)
+        rx_characteristic = next(
+            c for c in device_service.characteristics
+            if c.uuid == MainCommon.mUartSendCharacteristic)
+        rx_characteristic.write_value(val.encode('ascii'))
+
+    def characteristic_write_value_succeeded(self, characteristic):
+        super().characteristic_write_value_succeeded(characteristic)
+        logging.info("[{}] Write to characteristic done for: [{}]".format(self.logger_name, characteristic.uuid))
+
+    def characteristic_write_value_failed(self, characteristic, error):
+        super().characteristic_write_value_failed(characteristic, error)
+        logging.warning("[{}] Write to characteristic failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
 
 
 
