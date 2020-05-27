@@ -13,8 +13,8 @@ import duallog
 class ChecksumCRC(object):
     crc16_tab_h = []
     crc16_tab_l = []
-    bArr = [None] * 256
-    bArr2 = [None] * 256
+    bArr = [0] * 256
+    bArr2 = [0] * 256
     USER_MASK = 65535
 
     bArr[1] = -63;
@@ -500,26 +500,45 @@ class ChecksumCRC(object):
     bArr2[255] = 64;
     crc16_tab_l = bArr2;
 
+
     @classmethod
-    @dispatch(object, int)
+    def calcCrc16(cls, data, offset = 0, length = None, preval = None):
+        if length is None:
+            length = len(data)
+        if preval is None:
+            preval = cls.USER_MASK
+        ucCRCHi = (65280 & preval) >> 8
+        ucCRCLo = preval & 255
+        i = 0
+        while i < length:
+            iIndex = (data[offset + i] ^ ucCRCLo) & 255
+            print("iIndex: {}".format(iIndex))
+            ucCRCLo = ucCRCHi ^ cls.crc16_tab_h[iIndex]
+            i += 1
+            ucCRCHi = cls.crc16_tab_l[iIndex]
+        return ((ucCRCHi & 255) << 8) | (ucCRCLo & 255 & cls.USER_MASK)
+'''
+
+    @classmethod
+    @dispatch(object, list)
     def calcCrc16(cls, data):
         return cls.calcCrc16(data, 0, len(data))
 
     @classmethod
-    @dispatch(object, int, int, int)
-    def calcCrc16(cls, data, offset, len):
-        return cls.calcCrc16(data, offset, len, USER_MASK)
+    @dispatch(object, list, int, int)
+    def calcCrc16(cls, data, offset, length):
+        return cls.calcCrc16(data, offset, length, cls.USER_MASK)
 
     @classmethod
-    @dispatch(object, int, int, int, int)
-    def calcCrc16(cls, data, offset, len, preval):
+    @dispatch(object, list, int, int, int)
+    def calcCrc16(cls, data, offset, length, preval):
         ucCRCHi = (65280 & preval) >> 8
         ucCRCLo = preval & 255
         i = 0
-        while i < len:
+        while i < length:
             iIndex = (data[offset + i] ^ ucCRCLo) & 255
             ucCRCLo = ucCRCHi ^ cls.crc16_tab_h[iIndex]
             i += 1
             ucCRCHi = cls.crc16_tab_l[iIndex]
-        return ((ucCRCHi & 255) << 8) | (ucCRCLo & 255 & USER_MASK)
-
+        return ((ucCRCHi & 255) << 8) | (ucCRCLo & 255 & cls.USER_MASK)
+'''

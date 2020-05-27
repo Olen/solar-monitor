@@ -48,6 +48,8 @@ class SLinkRealTimeMonitor():
         # super(self).__init__()
         self.mTimerout = timeout
         self.mIsActive = True
+        self.MainCommon = MainCommon()
+        self.SendUartData = self.MainCommon.SendUartData
 
     def setDeviceId(self, id):
         self.mDeviceId = id

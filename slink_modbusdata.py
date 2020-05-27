@@ -29,40 +29,41 @@ class ModbusData(object):
     ACTION_POINTER_INDEX_MASK = 65280
 
     @classmethod
-    def BuildRequestBasis(cls, function_, dev_addr):
+    def BuildRequestBasis(self, function_, dev_addr):
         bytes = [None]*2
         bytes[1] = int(function_)
-        bytes[0] = int(dev_addr)
+        bytes[0] = int(dev_addr.split(":")[-1], 16)
         return bytes
 
     @classmethod
-    def BuildReadRegsCmd(cls, dev_addr, start, count):
+    def BuildReadRegsCmd(self, dev_addr, start, count):
         bytes = [None]*8
-        basis = cls.BuildRequestBasis(3, dev_addr)
+        basis = self.BuildRequestBasis(3, dev_addr)
         # System.arraycopy(basis, 0, bytes, 0, )
         bytes = basis[:]
-        bytes[2] = int(((start & ACTION_POINTER_INDEX_MASK) >> 8))
-        bytes[3] = int((start & 255))
-        bytes[4] = int(((count & ACTION_POINTER_INDEX_MASK) >> 8))
-        bytes[5] = int((count & 255))
+        print(bytes)
+        bytes.append(int(((start & self.ACTION_POINTER_INDEX_MASK) >> 8)))
+        bytes.append(int((start & 255)))
+        bytes.append(int(((count & self.ACTION_POINTER_INDEX_MASK) >> 8)))
+        bytes.append(int((count & 255)))
         crc = ChecksumCRC.calcCrc16(bytes, 0, 6)
-        bytes[7] = int(((crc & ACTION_POINTER_INDEX_MASK) >> 8))
-        bytes[6] = int((crc & 255))
+        bytes.append(int(((crc & self.ACTION_POINTER_INDEX_MASK) >> 8)))
+        bytes.append(int((crc & 255)))
         return bytes
 
     @classmethod
-    def BuildWriteRegCmd(cls, dev_addr, start, data):
+    def BuildWriteRegCmd(self, dev_addr, start, data):
         bytes = [None]*8
-        basis = cls.BuildRequestBasis(6, dev_addr)
+        basis = self.BuildRequestBasis(6, dev_addr)
         # System.arraycopy(basis, 0, bytes, 0, )
         bytes = basis[:]
-        bytes[2] = int(((start & ACTION_POINTER_INDEX_MASK) >> 8))
-        bytes[3] = int((start & 255))
-        bytes[4] = int(((data & ACTION_POINTER_INDEX_MASK) >> 8))
-        bytes[5] = int((data & 255))
+        bytes.append(int(((start & self.ACTION_POINTER_INDEX_MASK) >> 8)))
+        bytes.append(int((start & 255)))
+        bytes.append(int(((data & self.ACTION_POINTER_INDEX_MASK) >> 8)))
+        bytes.append(int((data & 255)))
         crc = ChecksumCRC.calcCrc16(bytes, 0, 6)
-        bytes[7] = int(((crc & ACTION_POINTER_INDEX_MASK) >> 8))
-        bytes[6] = int((crc & 255))
+        bytes.append(int(((crc & self.ACTION_POINTER_INDEX_MASK) >> 8)))
+        bytes.append(int((crc & 255)))
         return bytes
 
 

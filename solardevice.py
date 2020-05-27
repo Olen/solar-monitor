@@ -20,6 +20,7 @@ import logging
 from datalogger import DataLogger
 from smartpowerutil import SmartPowerUtil
 from slink_maincommon import MainCommon
+from slink_modbusdata import ModbusData
 
 
 import logging 
@@ -45,6 +46,7 @@ class SolarDevice(blegatt.Device):
         self.services_list = []
         self.notify_list = []
         self.datalogger = None
+        self.MainCommon = MainCommon(self)
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice()
@@ -108,6 +110,10 @@ class SolarDevice(blegatt.Device):
 
         logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
         device_notification_characteristic.enable_notifications()
+
+        if self.alias == 'BT-TH-3992AAA8':
+            logging.info("[{}] Sending magic packet to {}".format(self.logger_name, self.alias))
+            self.MainCommon.SendUartData(ModbusData.BuildWriteRegCmd(self.mac_address, 266, 1))
 
     # only for reading a characteristic
     # def descriptor_read_value_failed(self, descriptor, error):

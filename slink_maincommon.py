@@ -9,7 +9,7 @@ import blegatt
 
 from slinkdata import SLinkData
 from slink_modbusdata import ModbusData
-from solardevice import SolarDevice
+# from solardevice import SolarDevice
 
 from datalogger import DataLogger
 
@@ -30,16 +30,18 @@ class MainCommon():
     mUartRecvCharacteristic = SOLARLINK_READDATA_DEVICE_UUID
     mUartSendCharacteristic = SOLARLINK_WRITEDATA_DEVICE_UUID
 
+    def __init__(self, SolarDevice):
+        self.SolarDevice = SolarDevice
 
     def SendUartData(self, bs):
-        sendByteData(bs)
+        self.sendByteData(bs)
 
     def sendByteData(self, bs):
         logging.debug("DDDD" + "Send data 00-->:" + str(bs))
         logging.debug(self.TAG + ",USC:" + self.mUartSendCharacteristic )
         # self.mUartSendCharacteristic.setValue(bs)
         # self.mBluetoothLeService.writeCharacteristic(self.mUartSendCharacteristic)
-        self.SolarDevice.write_value(bs)
+        self.SolarDevice.write_value(str(bs))
         msg = "send data"
         for valueOf in bs:
             msg = str(msg) + str("[{:02x}] ".format(valueOf))
@@ -53,7 +55,7 @@ class MainCommon():
         logging.debug("DDDD" + "Send response data 22-->:" + str_)
         # self.mUartSendCharacteristic.setValue(str_)
         # self.mBluetoothLeService.writeCharacteristic(self.mUartSendCharacteristic)
-        self.SolarDevice.write_value(bs)
+        self.SolarDevice.write_value(str(bs))
 
     def Sleep(self, ms):
         try:
