@@ -44,11 +44,11 @@ class SLinkRealTimeMonitor():
     progressDialog = None
     mTimerout = 2000
 
-    def __init__(self, timeout):
+    def __init__(self, timeout, device = None):
         # super(self).__init__()
         self.mTimerout = timeout
         self.mIsActive = True
-        self.MainCommon = MainCommon()
+        self.MainCommon = MainCommon(device)
         self.SendUartData = self.MainCommon.SendUartData
 
     def setDeviceId(self, id):
@@ -72,7 +72,7 @@ class SLinkRealTimeMonitor():
         # System.arraycopy(self.mUartRecvFifo, 0, self.mUartRecvData, 0, self.mUartRecvFifo.length)
         self.mUartRecvData = self.mUartRecvFifo[:]
         if self.mUartRecvData == None or not ModbusData.DataCrcCorrect(self.mUartRecvData):
-            logging.debug(self.TAG + self + "DataCrcCorrect failed!")
+            logging.debug(self.TAG + str(self.mUartRecvData) + " - DataCrcCorrect failed!")
             return False
         logging.debug(self.TAG + self + "DataCrcCorrect success!")
         return True
@@ -137,13 +137,13 @@ class SLinkRealTimeMonitor():
         if msg.arg1 == BatteryParamInfo.REG_ADDR:
             self.UpdateBatteryParamInfo(bs)
             return
-        elif msg.arg1 == SolarPanelInfo.REG_ADDR:
+        elif msg.arg1 == SLinkData.SolarPanelInfo.REG_ADDR:
             self.UpdateSolarPanelInfo(bs)
             return
-        elif msg.arg1 == SolarPanelAndBatteryState.REG_ADDR:
+        elif msg.arg1 == SLinkData.SolarPanelAndBatteryState.REG_ADDR:
             self.UpdateSolarPanelAndBatteryState(bs)
             return
-        elif msg.arg1 == ParamSettingData.REG_ADDR:
+        elif msg.arg1 == SLinkData.ParamSettingData.REG_ADDR:
             self.UpdateParamSettingData(bs)
             return
         else:
@@ -165,7 +165,7 @@ class SLinkRealTimeMonitor():
                 if self.mExit:
                     break
                 self.mClearFifo = True
-                self.mReadingRegId = SolarPanelInfo.REG_ADDR
+                self.mReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
                 self.mReadingCount = 4
                 self.SendUartData(ModbusData.BuildReadRegsCmd(self.mDeviceId, self.mReadingRegId, self.mReadingCount))
                 time.sleep(0.2)
@@ -173,13 +173,13 @@ class SLinkRealTimeMonitor():
                 if self.mExit:
                     break
                 self.mClearFifo = True
-                self.mReadingRegId = SolarPanelAndBatteryState.REG_ADDR
+                self.mReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
                 self.mReadingCount = 3
                 self.SendUartData(ModbusData.BuildReadRegsCmd(self.mDeviceId, self.mReadingRegId, self.mReadingCount))
                 time.sleep(0.2)
                 self.WaitPostMessage(1000)
                 self.mClearFifo = True
-                self.mReadingRegId = ParamSettingData.REG_ADDR
+                self.mReadingRegId = SLinkData.ParamSettingData.REG_ADDR
                 self.mReadingCount = 33
                 self.SendUartData(ModbusData.BuildReadRegsCmd(self.mDeviceId, self.mReadingRegId, self.mReadingCount))
                 time.sleep(0.2)
@@ -222,7 +222,7 @@ class SLinkRealTimeMonitor():
 
     def UpdateSolarPanelAndBatteryState(self, bs):
         z = True
-        state = SolarPanelAndBatteryState(bs)
+        state = SLinkData.SolarPanelAndBatteryState(bs)
         # logging.debug([None] * [state.mBatteryState])
         tv_charging_state_value = ["val00h: Charging is not turned on", "val01h: Start charging", "val02h: MPPT charge mode", "val03h: Balanced charging mode", "val04h: Boost charge mode", "val05h: Floating charge mode", "val06h: Constant Current mode"]
         logging.debug(tv_charging_state_value[state.mBatteryState])
@@ -256,7 +256,7 @@ class SLinkRealTimeMonitor():
         switchButton.setChecked(z)
 
     def UpdateParamSettingData(self, bs):
-        self.mLoadOptMod = ParamSettingData(bs).mData[28]
+        self.mLoadOptMod = SLinkData.ParamSettingData(bs).mData[28]
         logging.debug(self.TAG + "mLoadOptMod:" + self.mLoadOptMod)
         if self.mLoadOptMod == 15:
             self.mLoadSwitchStatusSB.setEnabled(True)
@@ -264,7 +264,7 @@ class SLinkRealTimeMonitor():
             self.mLoadSwitchStatusSB.setEnabled(False)
 
     def UpdateSolarPanelInfo(self, bs):
-        spinfo = SolarPanelInfo(bs)
+        spinfo = SLinkData.SolarPanelInfo(bs)
         logging.debug("{0:.1f}V".format(spinfo.mVoltage))
         logging.debug("{0:.2f}A".format(spinfo.mElectricity))
         logging.debug(spinfo.mChargingPower + "W")
