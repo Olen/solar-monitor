@@ -2,9 +2,9 @@
 
 from __future__ import absolute_import
 import sys
+import asyncio
 from argparse import ArgumentParser
 import configparser
-import blegatt
 import time
 import os
 import sys
@@ -19,8 +19,13 @@ import logging
 
 from datalogger import DataLogger
 from smartpowerutil import SmartPowerUtil
+from solarlinkutil import SolarLinkUtil
 from slink_maincommon import MainCommon
 from slink_modbusdata import ModbusData
+from slink_realtimemonitor import SLinkRealTimeMonitor
+from slinkdata import SLinkData
+
+
 
 
 import logging 
@@ -44,22 +49,28 @@ class SolarDevice(blegatt.Device):
         self.reader_activity = None
         self.logger_name = logger_name
         self.services_list = []
+        self.services_write_list = []
         self.notify_list = []
+        self.write_list = []
+        self.device_write_characteristic = None
         self.datalogger = None
         self.MainCommon = MainCommon(self)
+        self.writing = False
+        self.write_buffer = []
 
         if "battery" in self.logger_name:
-            self.entities = BatteryDevice()
+            self.entities = BatteryDevice(self.alias)
         elif "regulator" in self.logger_name:
-            self.entities = RegulatorDevice()
+            self.entities = RegulatorDevice(self.alias)
         else:
             self.entities = PowerDevice()
 
-        self.smartPowerUtil = SmartPowerUtil(self.alias, self.entities)  
 
-    def add_services(self, services_list, notify_list):
+    def add_services(self, services_list, notify_list, services_write_list, write_list):
         self.services_list = services_list
         self.notify_list = notify_list
+        self.write_list = write_list
+        self.services_write_list = services_write_list
     def add_datalogger(self, datalogger):
         self.datalogger = datalogger
 
@@ -88,32 +99,125 @@ class SolarDevice(blegatt.Device):
     def services_resolved(self):
         super().services_resolved()
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias))
-
         logging.info("[{}] Resolved services".format(self.logger_name))
+        device_notification_service = None
+        device_write_service = None
+
         for service in self.services:
             logging.info("[{}]  Service [{}]".format(self.logger_name, service.uuid))
+            if service.uuid in self.services_list:
+                logging.info("[{}]  - Found dev notify service [{}]".format(self.logger_name, service.uuid))
+                device_notification_service = service
+            if service.uuid in self.services_write_list:
+                logging.info("[{}]  - Found dev write service [{}]".format(self.logger_name, service.uuid))
+                device_write_service = service
             for characteristic in service.characteristics:
                 logging.info("[{}]    Characteristic [{}]".format(self.logger_name, characteristic.uuid))
+
+
+
                 # only for reading a characteristic
                 # for descriptor in characteristic.descriptors:
                     # print("[%s]\t\t\tDescriptor [%s] (%s)" % (self.mac_address, descriptor.uuid, descriptor.read_value()))
 
-        device_notification_service = next(
-            s for s in self.services
-            if s.uuid in self.services_list)
-        logging.info("[{}] Found dev notify serv [{}]".format(self.logger_name, device_notification_service.uuid))
+        # for service in self.services:
+        # device_notification_service = next(
+        #     s for s in self.services
+        #     if s.uuid in self.services_list)
 
-        device_notification_characteristic = next(
-            c for c in device_notification_service.characteristics
-            if c.uuid in self.notify_list)
-        logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
+        if device_notification_service:
+            for c in device_notification_service.characteristics:
+                if c.uuid in self.notify_list:
+                    logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, c.uuid))
+                    logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
+                    c.enable_notifications()
+        if device_write_service:
+            for c in device_write_service.characteristics:
+                if c.uuid in self.write_list:
+                    logging.info("[{}] Found dev write char [{}]".format(self.logger_name, c.uuid))
+                    logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
+                    self.device_write_characteristic = c
 
-        logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
-        device_notification_characteristic.enable_notifications()
+        # device_notification_characteristic = next(
+        #     c for c in device_notification_service.characteristics
+        #     if c.uuid in self.notify_list)
+        # logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
+        # logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
+        # device_notification_characteristic.enable_notifications()
+
+        # self.device_write_characteristic = next(
+        #     c for c in device_notification_service.characteristics
+        #     if c.uuid in self.write_list)
+        # logging.info("[{}] Found dev write char [{}]".format(self.logger_name, self.device_write_characteristic.uuid))
+
 
         if self.alias == 'BT-TH-3992AAA8':
-            logging.info("[{}] Sending magic packet to {}".format(self.logger_name, self.alias))
-            self.MainCommon.SendUartData(ModbusData.BuildWriteRegCmd(self.mac_address, 266, 1))
+            self.regulator_init()
+
+    def regulator_init(self):
+        logging.info("[{}] Sending magic packet to {}".format(self.logger_name, self.alias))
+        # self.MainCommon.SendUartData(ModbusData.BuildReadRegsCmd(255, 255, 0))
+        ReadingRegId = 12
+        ReadingCount = 2
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+        # self.characteristic_write_value(data)
+        # while self.writing == True:
+        #    logging.debug("Sleep a bit...")
+        #     await asyncio.sleep(1)
+        # time.sleep(1)
+
+        ReadingRegId = 256
+        ReadingCount = 7
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
+        ReadingCount = 4
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
+        ReadingCount = 3
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        ReadingRegId = SLinkData.ParamSettingData.REG_ADDR
+        ReadingCount = 33
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        # Repeat
+
+        ReadingRegId = 256
+        ReadingCount = 7
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
+        ReadingCount = 4
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
+        ReadingCount = 3
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+        ReadingRegId = SLinkData.ParamSettingData.REG_ADDR
+        ReadingCount = 33
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.write_buffer.append(data)
+
+
+        self.run_write_buffer()
+
+        # await self.characteristic_write_value(str(data))
+        # time.sleep(1)
+
+        # sys.exit()
+
+
 
     # only for reading a characteristic
     # def descriptor_read_value_failed(self, descriptor, error):
@@ -127,7 +231,12 @@ class SolarDevice(blegatt.Device):
         # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
         # retCmdData = self.smartPowerUtil.broadcastUpdate(value)
         # if self.smartPowerUtil.handleMessage(retCmdData):
-        if self.smartPowerUtil.broadcastUpdate(value):
+        if self.entities.send_ack:
+            msg = "main recv da ta[{0:02x}] [".format(value[0])
+            self.write_buffer.insert(0, bytearray(msg, "ascii"))
+            # self.characteristic_write_value(bytearray(msg, "ascii"))
+            self.run_write_buffer()
+        if self.entities.parse_notification(value):
             self.datalogger.log(self.logger_name, 'current', self.entities.current)
             self.datalogger.log(self.logger_name, 'voltage', self.entities.voltage)
             self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
@@ -150,22 +259,38 @@ class SolarDevice(blegatt.Device):
         super().characteristic_enable_notifications_failed(characteristic, error)
         logging.warning("[{}] Enabling notifications failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
 
-    def write_value(self, val):
-        device_service = next(
-            s for s in self.services
-            if s.uuid == MainCommon.SOLARLINK_WRITEDATA_SERVICE_UUID)
-        rx_characteristic = next(
-            c for c in device_service.characteristics
-            if c.uuid == MainCommon.mUartSendCharacteristic)
-        rx_characteristic.write_value(val.encode('ascii'))
+
+    def run_write_buffer(self):
+        if self.writing == False and len(self.write_buffer) > 0:
+            data = self.write_buffer.pop(0)
+            self.characteristic_write_value(data)
+
+    def characteristic_write_value(self, value):
+        if self.device_write_characteristic:
+            logging.info("[{}] Writing data to {} - {} ({})".format(self.logger_name, self.device_write_characteristic.uuid, value, bytearray(value).hex()))
+            self.writing = value
+            self.device_write_characteristic.write_value(value)
+        else:
+            logging.warning("[{}] No write characteristic created".format(self.logger_name))
 
     def characteristic_write_value_succeeded(self, characteristic):
         super().characteristic_write_value_succeeded(characteristic)
         logging.info("[{}] Write to characteristic done for: [{}]".format(self.logger_name, characteristic.uuid))
+        if self.writing[0:4] == bytearray(b'main'):
+            self.writing = False
+            self.run_write_buffer()
+        else:
+            self.writing = False
 
     def characteristic_write_value_failed(self, characteristic, error):
         super().characteristic_write_value_failed(characteristic, error)
         logging.warning("[{}] Write to characteristic failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
+        if self.writing[0:4] == bytearray(b'main'):
+            self.writing = False
+            self.run_write_buffer()
+        else:
+            self.writing = False
+
 
 
 
@@ -184,7 +309,13 @@ class PowerDevice():
     _dsoc = 0
     _msg = None
     _status = None
+    def __init__(self, alias=None):
+        self._alias = alias
 
+
+    @property
+    def alias(self):
+        return self._alias
 
     @property
     def mcurrent(self):
@@ -321,6 +452,21 @@ class RegulatorDevice(PowerDevice):
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     _power_switch_status = 0
+    _device_id = 255
+    _send_ack = True
+    def __init__(self, alias):
+        super().__init__(alias=alias)
+        self.solarLinkUtil = SolarLinkUtil(self.alias, self)  
+
+    @property
+    def device_id(self):
+        return self._device_id
+
+    @property
+    def send_ack(self):
+        return self._send_ack
+
+
     @property
     def power_switch_status(self):
         return self._power_switch_status
@@ -330,6 +476,9 @@ class RegulatorDevice(PowerDevice):
         self._power_switch_status = value
 
 
+    def parse_notification(self, value):
+        if self.solarLinkUtil.broadcastUpdate(value):
+            pass
 
 
 
@@ -341,14 +490,24 @@ class BatteryDevice(PowerDevice):
     _charge_cycles = 0
     _health = None
     _state = None
+    _send_ack = False
     _cell_mvoltage = {}
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, alias):
+        super().__init__(alias=alias)
         i = 0
         while i < 16:
             i = i + 1
             self._cell_mvoltage[i] = 0
+        self.smartPowerUtil = SmartPowerUtil(self.alias, self)  
+
+    @property
+    def device_id(self):
+        return self._device_id
+
+    @property
+    def send_ack(self):
+        return self._send_ack
 
     @property
     def charge_cycles(self):
@@ -438,6 +597,10 @@ class BatteryDevice(PowerDevice):
         if was != self.health:
             logging.info("Value of {} changed from {} to {}".format('health', was, self.health))
 
+    def parse_notification(self, value):
+        if self.smartPowerUtil.broadcastUpdate(value):
+            return True
+        return False
 
     # def dumpall(self):
     #     logging.info("RAW voltage == {}, current == {}, soc == {}, capacity == {}, cycles == {}, status == {}, temperature == {}, health = {}".format(self.mvoltage, self.mcurrent, self.dsoc, self.mcapacity, self.charge_cycles, self.state, self.temperature, self.health))

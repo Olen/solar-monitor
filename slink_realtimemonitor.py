@@ -65,12 +65,14 @@ class SLinkRealTimeMonitor():
             self.obj = obj1
 
     def BasePostRecvMessage(self):
+        logging.debug("{} -> {}".format("BasePostRecvMessage", self.mUartRecvFifo))
         if self.mUartRecvFifo == None:
             return False
         # self.mUartRecvData = None
         self.mUartRecvData = [None] * len(self.mUartRecvFifo)
         # System.arraycopy(self.mUartRecvFifo, 0, self.mUartRecvData, 0, self.mUartRecvFifo.length)
         self.mUartRecvData = self.mUartRecvFifo[:]
+        logging.debug("{} -> {}".format("mUartRecvData", self.mUartRecvData))
         if self.mUartRecvData == None or not ModbusData.DataCrcCorrect(self.mUartRecvData):
             logging.debug(self.TAG + str(self.mUartRecvData) + " - DataCrcCorrect failed!")
             return False
@@ -78,6 +80,7 @@ class SLinkRealTimeMonitor():
         return True
 
     def OnRecvMessage(self, bs):
+        logging.debug("{} -> {}".format("OnRecvMessage", bs))
         if bs != None and len(bs) != 0:
             if self.mClearFifo or self.mUartRecvFifo == None:
                 self.mUartRecvFifo = bs
@@ -102,24 +105,30 @@ class SLinkRealTimeMonitor():
                 self.mClearFifo = True
 
     def WaitPostMessage(self, timerout):
+        logging.debug("{} -> {}".format("WaitPostMessage", timerout))
         timerout2 = timerout / 10
         while True:
             # if self.BasePostRecvMessage():
                 # break
             if self.PostRecvMessage():
+                logging.debug("{} -> {}".format("WaitPostMessage", "Got data - breaking"))
                 break
             timerout3 = timerout2 - 1
             if timerout2 == 0:
                 timerout2 = timerout3
+                logging.debug("{} -> {}".format("WaitPostMessage", "Timerout2 == 0 - breaking"))
                 break
             else:
                 i = timerout3
                 time.sleep(0.01)
                 timerout2 = timerout3
+                logging.debug("{} -> {}".format("WaitPostMessage", "Returning false 1"))
                 return False
         logging.debug(self.TAG + self + "timerout:" + timerout2)
         if timerout2 <= 0:
+            logging.debug("{} -> {}".format("WaitPostMessage", "Returning false 2"))
             return False
+        logging.debug("{} -> {}".format("WaitPostMessage", "Returning true"))
         return True
 
 #  // Base class
@@ -155,6 +164,7 @@ class SLinkRealTimeMonitor():
             self.mRefreshThreadRuning = True
             times = 0
             while not self.mExit:
+                logging.debug("{} deviceId: {} -> {} times".format("RefreshThread", self.mDeviceId, times))
                 self.mClearFifo = True
                 time.sleep(0.1)
                 self.mReadingRegId = 256
@@ -201,10 +211,12 @@ class SLinkRealTimeMonitor():
             self.mRefreshThreadRuning = False
 
     def PostRecvMessage(self):
+        logging.debug("{}".format("PostRecvMessage"))
         if not self.BasePostRecvMessage():
+
             return False
         bs = self.mUartRecvData
-        logging.debug(self.TAG + "PostRecvMessage")
+        logging.debug(self.TAG + "PostRecvMessage 2")
         msg = "recv data"
         for valueOf in bs:
             # msg = StringBuilder(str(msg)).append("[{:02x}] ".format([None] * )).__str__()

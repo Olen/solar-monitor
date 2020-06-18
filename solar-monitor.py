@@ -13,7 +13,7 @@ from datalogger import DataLogger
 
 import logging 
 import duallog
-duallog.setup('solar-monitor', minLevel=logging.INFO, rotation='daily', keep=30)
+duallog.setup('solar-monitor', minLevel=logging.DEBUG, rotation='daily', keep=30)
 # duallog.setup('solar-monitor', minLevel=logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
@@ -24,6 +24,8 @@ duallog.setup('solar-monitor', minLevel=logging.INFO, rotation='daily', keep=30)
 
 dev_services_list = []
 dev_notify_list = []
+dev_services_write_list = []
+dev_write_list = []
 
 device_manager = None
 datalogger = None
@@ -74,9 +76,15 @@ def main():
         config.set('monitor', 'adapter', args.adapter)
 
     for item in config.items("services"):
-        dev_services_list.append(item[1])
+        if 'write' in item[0]:
+            dev_services_write_list.append(item[1])
+        else:
+            dev_services_list.append(item[1])
     for item in config.items("characteristics"):
-        dev_notify_list.append(item[1])
+        if 'notify' in item[0]:
+            dev_notify_list.append(item[1])
+        if 'write' in item[0]:
+            dev_write_list.append(item[1])
 
     device_manager = SolarDeviceManager(adapter_name=config['monitor']['adapter'])
     logging.info("Adapter status - Powered: {}".format(device_manager.is_adapter_powered))
@@ -101,13 +109,12 @@ def main():
     devices = {}
     for item in config.items("devices"):
         devices[item[1]] = item[0]
-    print(devices)
     for dev in device_manager.devices():
         # if dev.mac_address != "d8:64:8c:66:f4:d4" and dev.mac_address != "7c:01:0a:41:ca:f9":
         # if dev.mac_address != "d8:64:8c:66:f4:d4":
         if dev.mac_address in devices:
             device = SolarDevice(mac_address=dev.mac_address, manager=device_manager, logger_name=devices[dev.mac_address], reconnect=config.getboolean('monitor', 'reconnect'))
-            device.add_services(dev_services_list, dev_notify_list)
+            device.add_services(dev_services_list, dev_notify_list, dev_services_write_list, dev_write_list)
             device.add_datalogger(datalogger)
             device.connect()
 
