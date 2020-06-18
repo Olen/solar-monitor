@@ -55,7 +55,7 @@ class MainCommon():
         logging.debug("DDDD" + "Send response data 22-->:" + str_)
         # self.mUartSendCharacteristic.setValue(str_)
         # self.mBluetoothLeService.writeCharacteristic(self.mUartSendCharacteristic)
-        self.SolarDevice.write_value(str(bs))
+        self.SolarDevice.write_value(str(str_))
 
     def Sleep(self, ms):
         try:

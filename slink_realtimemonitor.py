@@ -89,10 +89,13 @@ class SLinkRealTimeMonitor():
                 # System.arraycopy(bs, 0, temp_data, self.mUartRecvFifo.length, bs.length)
                 temp_data[len(self.mUartRecvFifo)+1:] = bs[:]
                 self.mUartRecvFifo = temp_data
-            msg = "recv data"
-            for valueOf in self.mUartRecvFifo:
+            msg = "main recv data"
+            for valueOf in bs:
+            # for valueOf in self.mUartRecvFifo:
                 msg = str(msg) + str("[{:02x}] ".format(valueOf))
+            self.SendUartString(str(msg)+("\r\n"))
             logging.debug(self.TAG + msg)
+
             # retb = BasePostRecvMessage()
             retb = PostRecvMessage()
             if retb:
