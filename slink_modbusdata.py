@@ -31,8 +31,10 @@ class ModbusData(object):
     @classmethod
     def BuildRequestBasis(self, function_, dev_addr):
         bytes = [None]*2
+        # bytes[0] = int(dev_addr.split(":")[-1], 16)
+        # bytes[0] = int(dev_addr.split(":")[0], 16)
+        bytes[0] = 4
         bytes[1] = int(function_)
-        bytes[0] = int(dev_addr.split(":")[-1], 16)
         return bytes
 
     @classmethod
@@ -47,8 +49,8 @@ class ModbusData(object):
         bytes.append(int(((count & self.ACTION_POINTER_INDEX_MASK) >> 8)))
         bytes.append(int((count & 255)))
         crc = ChecksumCRC.calcCrc16(bytes, 0, 6)
-        bytes.append(int(((crc & self.ACTION_POINTER_INDEX_MASK) >> 8)))
         bytes.append(int((crc & 255)))
+        bytes.append(int(((crc & self.ACTION_POINTER_INDEX_MASK) >> 8)))
         return bytes
 
     @classmethod
@@ -62,8 +64,8 @@ class ModbusData(object):
         bytes.append(int(((data & self.ACTION_POINTER_INDEX_MASK) >> 8)))
         bytes.append(int((data & 255)))
         crc = ChecksumCRC.calcCrc16(bytes, 0, 6)
-        bytes.append(int(((crc & self.ACTION_POINTER_INDEX_MASK) >> 8)))
         bytes.append(int((crc & 255)))
+        bytes.append(int(((crc & self.ACTION_POINTER_INDEX_MASK) >> 8)))
         return bytes
 
 
