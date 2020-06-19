@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 import configparser
 import blegatt
 import time
+import asyncio
 
 from solardevice import SolarDeviceManager, SolarDevice, PowerDevice, BatteryDevice, RegulatorDevice
 from smartpowerutil import SmartPowerUtil
@@ -33,6 +34,8 @@ config = None
 
 dev_found_list = []
 cur_batt_service = None
+
+loop = None
 
 def validate_service_uuid(uuid):
     global cur_batt_service
@@ -135,4 +138,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    pending = asyncio.Task.all_tasks()
+    for task in pending:
+        task.cancel()
+        # Now we should await task to execute it's cancellation.
+        # Cancelled task raises asyncio.CancelledError that we can suppress:
+        with suppress(asyncio.CancelledError):
+            loop.run_until_complete(task)

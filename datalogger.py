@@ -87,7 +87,9 @@ class DataLogger():
 
 
     def send_to_server(self, device, var, val):
+        return
         self.mqtt.publish(device, var, val)
+        return
         ts = datetime.now().isoformat(' ', 'seconds')
         payload = {'device': device, var: val, 'ts': ts}
         # logging.info("Sending to server {}".format(payload))

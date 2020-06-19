@@ -3,6 +3,8 @@
 from __future__ import absolute_import
 import sys
 import asyncio
+import threading
+
 from argparse import ArgumentParser
 import configparser
 import time
@@ -151,32 +153,101 @@ class SolarDevice(blegatt.Device):
         # logging.info("[{}] Found dev write char [{}]".format(self.logger_name, self.device_write_characteristic.uuid))
 
 
-        if self.alias == 'BT-TH-3992AAA8':
-            self.regulator_init()
+        if self.entities.need_polling:
+            t = threading.Thread(target=self.thread_poll)
+            t.daemon = True 
+            t.start()
+
+    def thread_poll(self):
+        c = 0
+        while True:
+            c = c + 1
+            # self.async_poll_data('BatteryParamInfo')
+            # time.sleep(2)
+            self.async_poll_data('ParamSettingData')
+            time.sleep(5)
+            # self.async_poll_data('SolarPanelInfo')
+            # time.sleep(2)
+            if c < 10:
+                self.regulator_power("on")
+            else:
+                self.regulator_power("off")
+            time.sleep(5)
+
+
+    def async_poll_data(self, register):
+
+        if register == 'SolarPanelAndBatteryState':
+            ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
+            ReadingCount = SLinkData.SolarPanelAndBatteryState.READ_WORD
+
+        elif register == 'BatteryParamInfo':
+            ReadingRegId = SLinkData.BatteryParamInfo.REG_ADDR
+            ReadingCount = SLinkData.BatteryParamInfo.READ_WORD
+        elif register == 'SolarPanelInfo':
+            ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
+            ReadingCount = SLinkData.SolarPanelInfo.READ_WORD
+        elif register == 'ParamSettingData':
+            ReadingRegId = SLinkData.ParamSettingData.REG_ADDR
+            ReadingCount = 33
+        elif register == 'RegulatorPowerOn':
+            ReadingRegId = 266
+            ReadingCount = 1
+        elif register == 'RegulatorPowerOff':
+            ReadingRegId = 266
+            ReadingCount = 0
+        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
+        self.entities.poll_register = register
+        waitcount = 0
+        while self.writing:
+            logging.debug("Waiting for writing: {} {}".format(self.writing, waitcount))
+            time.sleep(1)
+            waitcount = waitcount + 1
+            if waitcount > 5:
+                return False
+        logging.debug("Writing")
+        self.characteristic_write_value(data)
+        return True
+
+
+    def regulator_power(self, state):
+        if state == "on":
+            self.async_poll_data('RegulatorPowerOn')
+        else: 
+            self.async_poll_data('RegulatorPowerOff')
 
     def regulator_init(self):
         logging.info("[{}] Sending magic packet to {}".format(self.logger_name, self.alias))
         # self.MainCommon.SendUartData(ModbusData.BuildReadRegsCmd(255, 255, 0))
+        '''
         ReadingRegId = 12
         ReadingCount = 2
         data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
         self.write_buffer.append(data)
+        '''
+        # loop = asyncio.get_event_loop()
+        # loop.create_task(self.async_poll_data('BatteryParamInfo'))
+        # asyncio.ensure_future(self.async_poll_data('BatteryParamInfo'))  # fire and forget
+        t = threading.Thread(target=self.async_poll_data, args=['BatteryParamInfo'])
+        t.daemon = True 
+        t.start()
+
+
+        '''
         # self.characteristic_write_value(data)
         # while self.writing == True:
         #    logging.debug("Sleep a bit...")
         #     await asyncio.sleep(1)
         # time.sleep(1)
-
-        ReadingRegId = 256
-        ReadingCount = 7
+        self.entities.poll_register = 'BatteryParamInfo'        
+        ReadingRegId = SLinkData.BatteryParamInfo.REG_ADDR
+        ReadingCount = SLinkData.BatteryParamInfo.READ_WORD
         data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
 
         ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
         ReadingCount = 4
         data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
         self.write_buffer.append(data)
-
         ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
         ReadingCount = 3
         data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
@@ -186,6 +257,10 @@ class SolarDevice(blegatt.Device):
         ReadingCount = 33
         data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
         self.write_buffer.append(data)
+        self.run_write_buffer()
+        '''
+        # self.run_write_buffer()
+        return True
 
         # Repeat
 
@@ -226,28 +301,88 @@ class SolarDevice(blegatt.Device):
 
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
-        logging.debug("[{}] Received update".format(self.logger_name))
-        logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
+        # if "regulator" in self.logger_name:
+        # logging.debug("[{}] Received update".format(self.logger_name))
+        # logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
         # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
         # retCmdData = self.smartPowerUtil.broadcastUpdate(value)
         # if self.smartPowerUtil.handleMessage(retCmdData):
         if self.entities.send_ack:
             msg = "main recv da ta[{0:02x}] [".format(value[0])
-            self.write_buffer.insert(0, bytearray(msg, "ascii"))
+            self.characteristic_write_value(bytearray(msg, "ascii"))
             # self.characteristic_write_value(bytearray(msg, "ascii"))
-            self.run_write_buffer()
+            # self.run_write_buffer()
         if self.entities.parse_notification(value):
-            self.datalogger.log(self.logger_name, 'current', self.entities.current)
-            self.datalogger.log(self.logger_name, 'voltage', self.entities.voltage)
-            self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
-            self.datalogger.log(self.logger_name, 'soc', self.entities.soc)
-            self.datalogger.log(self.logger_name, 'capacity', self.entities.capacity)
-            self.datalogger.log(self.logger_name, 'cycles', self.entities.charge_cycles)
-            self.datalogger.log(self.logger_name, 'state', self.entities.state)
-            self.datalogger.log(self.logger_name, 'health', self.entities.health)
-            for cell in self.entities.cell_mvoltage:
-                if self.entities.cell_mvoltage[cell] > 0:
-                    self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
+            try:
+                self.datalogger.log(self.logger_name, 'current', self.entities.current)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'input_current', self.entities.input_current)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'charge_current', self.entities.charge_current)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'voltage', self.entities.voltage)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'input_voltage', self.entities.input_voltage)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'charge_voltage', self.entities.charge_voltage)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'power', self.entities.power)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'input_power', self.entities.input_power)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'charge_power', self.entities.charge_power)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'soc', self.entities.soc)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'capacity', self.entities.capacity)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'cycles', self.entities.charge_cycles)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'state', self.entities.state)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'power_switch_state', self.entities.power_switch_state)
+            except:
+                pass
+            try:
+                self.datalogger.log(self.logger_name, 'health', self.entities.health)
+            except:
+                pass
+            try:
+                for cell in self.entities.cell_mvoltage:
+                    if self.entities.cell_mvoltage[cell] > 0:
+                        self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
+            except:
+                pass
 
             # logging.info("Cell voltage: {}".format(self.entities.cell_voltage))
 
@@ -276,20 +411,12 @@ class SolarDevice(blegatt.Device):
     def characteristic_write_value_succeeded(self, characteristic):
         super().characteristic_write_value_succeeded(characteristic)
         logging.info("[{}] Write to characteristic done for: [{}]".format(self.logger_name, characteristic.uuid))
-        if self.writing[0:4] == bytearray(b'main'):
-            self.writing = False
-            self.run_write_buffer()
-        else:
-            self.writing = False
+        self.writing = False
 
     def characteristic_write_value_failed(self, characteristic, error):
         super().characteristic_write_value_failed(characteristic, error)
         logging.warning("[{}] Write to characteristic failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
-        if self.writing[0:4] == bytearray(b'main'):
-            self.writing = False
-            self.run_write_buffer()
-        else:
-            self.writing = False
+        self.writing = False
 
 
 
@@ -305,12 +432,27 @@ class PowerDevice():
     _mcapacity = 0
     _mcurrent = 0
     _mvoltage = 0
+    _mpower = 0
     _dkelvin = 0
     _dsoc = 0
     _msg = None
     _status = None
+    _poll_register = None
+    _need_poll = False
     def __init__(self, alias=None):
         self._alias = alias
+
+    @property
+    def need_polling(self):
+        return self._need_poll
+
+    @property
+    def poll_register(self):
+        return self._poll_register
+
+    @poll_register.setter
+    def poll_register(self, value):
+        self._poll_register = value
 
 
     @property
@@ -338,6 +480,29 @@ class PowerDevice():
             return
         self.value_changed('current', self.current, value)
         self._mcurrent = value * 1000
+
+
+    @property
+    def mpower(self):
+        return self._mpower
+    @mpower.setter
+    def mpower(self, value):
+        if value == 0 and (self._power > 500 or self._mpower < -500):
+            # Ignore probable invalid values
+            return 
+        self.value_changed('mpower', self.mpower, value)
+        self._mpower = value
+
+    @property
+    def power(self):
+        return round(self._mpower / 1000, 1)
+    @power.setter
+    def power(self, value):
+        if value == 0 and (self._mpower > 500 or self._mpower < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('power', self.power, value)
+        self._mpower = value * 1000
 
 
     @property 
@@ -451,9 +616,16 @@ class RegulatorDevice(PowerDevice):
     Special class for Regulator-devices.  
     Extending PowerDevice class with more properties specifically for the regulators
     '''
-    _power_switch_status = 0
     _device_id = 255
     _send_ack = True
+    _need_poll = True
+    _power_switch_status = 0
+    _input_mvoltage = 0
+    _charge_mvoltage = 0
+    _input_mcurrent = 0
+    _charge_mcurrent = 0
+    _input_mpower = 0
+    _charge_mpower = 0
     def __init__(self, alias):
         super().__init__(alias=alias)
         self.solarLinkUtil = SolarLinkUtil(self.alias, self)  
@@ -466,7 +638,6 @@ class RegulatorDevice(PowerDevice):
     def send_ack(self):
         return self._send_ack
 
-
     @property
     def power_switch_status(self):
         return self._power_switch_status
@@ -476,9 +647,132 @@ class RegulatorDevice(PowerDevice):
         self._power_switch_status = value
 
 
+    @property
+    def input_mvoltage(self):
+        return self._input_mvoltage
+    @input_mvoltage.setter
+    def input_mvoltage(self, value):
+        if value == 0 and (self._input_mvoltage > 500 or self._input_mvoltage < -500):
+            # Ignore probable invalid values
+            return 
+        self.value_changed('input_mvoltage', self.input_mvoltage, value)
+        self._input_mvoltage = value
+
+    @property
+    def input_voltage(self):
+        return round(self._input_mvoltage / 1000, 1)
+    @input_voltage.setter
+    def input_voltage(self, value):
+        if value == 0 and (self._input_mvoltage > 500 or self._input_mvoltage < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('input_voltage', self.input_voltage, value)
+        self._input_mvoltage = value * 1000
+
+
+    @property
+    def input_mcurrent(self):
+        return self._input_mcurrent
+    @input_mcurrent.setter
+    def input_mcurrent(self, value):
+        if value == 0 and (self._input_mcurrent > 500 or self._input_mcurrent < -500):
+            # Ignore probable invalid values
+            return 
+        self.value_changed('input_mcurrent', self.input_mcurrent, value)
+        self._input_mcurrent = value
+
+    @property
+    def input_current(self):
+        return round(self._input_mcurrent / 1000, 1)
+    @input_current.setter
+    def input_current(self, value):
+        if value == 0 and (self._input_mcurrent > 500 or self._input_mcurrent < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('input_current', self.input_current, value)
+        self._input_mcurrent = value * 1000
+
+
+    @property
+    def charge_mvoltage(self):
+        return self._charge_mvoltage
+    @charge_mvoltage.setter
+    def charge_mvoltage(self, value):
+        if value == 0 and (self._charge_mvoltage > 500 or self._charge_mvoltage < -500):
+            # Ignore probable invalid values
+            return 
+        self.value_changed('charge_mvoltage', self.charge_mvoltage, value)
+        self._charge_mvoltage = value
+
+    @property
+    def charge_voltage(self):
+        return round(self._charge_mvoltage / 1000, 1)
+    @charge_voltage.setter
+    def charge_voltage(self, value):
+        if value == 0 and (self._charge_mvoltage > 500 or self._charge_mvoltage < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('charge_voltage', self.charge_voltage, value)
+        self._charge_mvoltage = value * 1000
+
+
+    @property
+    def charge_mcurrent(self):
+        return self._charge_mcurrent
+    @charge_mcurrent.setter
+    def charge_mcurrent(self, value):
+        if value == 0 and (self._charge_mcurrent > 500 or self._charge_mcurrent < -500):
+            # Ignore probable invalid values
+            return 
+        self.value_changed('charge_mcurrent', self.charge_mcurrent, value)
+        self._charge_mcurrent = value
+
+    @property
+    def charge_current(self):
+        return round(self._charge_mcurrent / 1000, 1)
+    @charge_current.setter
+    def charge_current(self, value):
+        if value == 0 and (self._charge_mcurrent > 500 or self._charge_mcurrent < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('charge_current', self.charge_current, value)
+        self._charge_mcurrent = value * 1000
+
+
+    @property
+    def input_power(self):
+        return round(self._input_mpower / 1000, 1)
+    @input_power.setter
+    def input_power(self, value):
+        if value == 0 and (self._input_mpower > 500 or self._input_mpower < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('input_power', self.input_power, value)
+        self._input_mpower = value * 1000
+
+    @property
+    def charge_power(self):
+        return round(self._charge_mpower / 1000, 1)
+    @charge_power.setter
+    def charge_power(self, value):
+        if value == 0 and (self._charge_mpower > 500 or self._charge_mpower < -500):
+            # Ignore probable invalid values
+            return
+        self.value_changed('charge_power', self.charge_power, value)
+        self._charge_mpower = value * 1000
+
+
+
+
+
+
+
+
     def parse_notification(self, value):
-        if self.solarLinkUtil.broadcastUpdate(value):
-            pass
+        if self.solarLinkUtil.pollerUpdate(self.poll_register, value):
+            return True
+        else:
+            logging.warning("Error during parse_notification")
 
 
 
