@@ -92,13 +92,13 @@ class DataLogger():
         if self.logdata[device][var]['value'] != val:
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = val
-            logging.info("Sending new data {} {} {}: {}".format(ts.isoformat(' ', 'seconds'), device, var, val))
+            logging.info("[{}] Sending new data {}: {}".format(device, var, val))
             self.send_to_server(device, var, val)
         elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=15):
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = val
             # logging.debug("Sending data to server due to long wait")
-            logging.info("Sending refreshed data {} {} {}: {}".format(ts.isoformat(' ', 'seconds'), device, var, val))
+            logging.info("[{}] Sending refreshed data {}: {}".format(device, var, val))
             self.send_to_server(device, var, val)
 
 
