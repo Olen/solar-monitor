@@ -13,28 +13,40 @@ class DataLoggerMqtt():
         self.client = paho.Client("home-assistant")                           #create client object
         self.client.on_publish = self.on_publish                          #assign function to callback
         self.client.connect(broker,port)                                 #establish connection
+        self._prefix = ""
         self.sensors = []
+
+    @property
+    def prefix(self):
+        return self._prefix
+
+    @prefix.setter
+    def prefix(self, val):
+        if not val.endswith("/"):
+            val = val + "/"
+        self._prefix = val
+
 
     def create_sensor(self, device, var):
         topic = "homeassistant/sensor/{}/{}/config".format(device, var)
         val = {
-            "name": "leveld_{}_{}".format(device, var),
-            "state_topic": "leveld/sensor/{}/{}/state".format(device, var)
+            "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
+            "state_topic": "{}sensor/{}/{}/state".format(self.prefix, device, var)
         }
         # if var ==
         ret = self.client.publish(topic, json.dumps(val))
-        self.sensors.append("leveld/sensor/{}/{}/state".format(device, var))
+        self.sensors.append("{}sensor/{}/{}/state".format(self.prefix, device, var))
 
 
     def on_publish(self, client, userdata, result):             #create function for callback
         logging.debug("Published to MQTT")
 
     def publish(self, device, var, val):
-        topic = "leveld/sensor/{}/{}/state".format(device, var)
+        topic = "{}sensor/{}/{}/state".format(self.prefix, device, var)
         if topic not in self.sensors:
-            logging.debug("Creating MQTT-sensor {}/{}".format(device, var))
+            logging.debug("Creating MQTT-sensor {}{}/{}".format(self.prefix, device, var))
             self.create_sensor(device, var)
-        logging.debug("Publishing to MQTT {}: {}/{}/state = {}".format(self.broker, device, var, val))
+        logging.debug("Publishing to MQTT {}: {}{}/{}/state = {}".format(self.broker, self.prefix, device, var, val))
         ret = self.client.publish(topic, val)
 
 
@@ -42,11 +54,17 @@ class DataLoggerMqtt():
 
 
 class DataLogger():
-    def __init__(self, url, token):
-        self.url = url
-        self.token = token
+    def __init__(self, config):
+        # config.get('datalogger', 'url'), config.get('datalogger', 'token')
+        self.url = None
+        self.mqtt = None
+        if config.get('datalogger', 'url', fallback=None):
+            self.url = config.get('datalogger', 'url')
+            self.token = config.get('datalogger', 'token')
+        if config.get('mqtt', 'broker', fallback=None):
+            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883)
+            self.mqtt.prefix = config.get('mqtt', 'prefix') 
         self.logdata = {}
-        self.mqtt = DataLoggerMqtt('ha.olen.net', 1883)
 
        
     # logdata  
@@ -87,21 +105,15 @@ class DataLogger():
 
 
     def send_to_server(self, device, var, val):
-        return
-        self.mqtt.publish(device, var, val)
-        return
-        ts = datetime.now().isoformat(' ', 'seconds')
-        payload = {'device': device, var: val, 'ts': ts}
-        # logging.info("Sending to server {}".format(payload))
-        # return
-        header = {'Content-type': 'application/json', 'Accept': 'text/plain', 'Authorization': 'Bearer {}'.format(self.token)}
-        try:
-            response = requests.post(url=self.url, json=payload, headers=header)
-        except TimeoutError:
-            logging.error("Connection to {} timed out!".format(self.url))
-        '''
-        # else:
-        #     logging.debug(response)
-        '''
+        if self.mqtt:
+            self.mqtt.publish(device, var, val)
+        if self.url:
+            ts = datetime.now().isoformat(' ', 'seconds')
+            payload = {'device': device, var: val, 'ts': ts}
+            header = {'Content-type': 'application/json', 'Accept': 'text/plain', 'Authorization': 'Bearer {}'.format(self.token)}
+            try:
+                response = requests.post(url=self.url, json=payload, headers=header)
+            except TimeoutError:
+                logging.error("Connection to {} timed out!".format(self.url))
 
 
