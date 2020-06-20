@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 import configparser
 import blegatt
 import time
-import asyncio
 
 from solardevice import SolarDeviceManager, SolarDevice, PowerDevice, BatteryDevice, RegulatorDevice
 from smartpowerutil import SmartPowerUtil
@@ -14,7 +13,18 @@ from datalogger import DataLogger
 
 import logging 
 import duallog
-duallog.setup('solar-monitor', minLevel=logging.DEBUG, rotation='daily', keep=30)
+
+c = configparser.ConfigParser()
+c.read('solar-monitor.ini')
+
+if c.getboolean('monitor', 'debug', fallback=False):
+    print("Debug enabled")
+    level = logging.DEBUG
+else:
+    print("Debug disabled")
+    level = logging.INFO
+
+duallog.setup('solar-monitor', minLevel=level, fileLevel=logging.INFO, rotation='daily', keep=30)
 # duallog.setup('solar-monitor', minLevel=logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
@@ -96,7 +106,8 @@ def main():
         device_manager.is_adapter_powered = True
         logging.info("Powered on")
 
-    datalogger = DataLogger(config.get('datalogger', 'url'), config.get('datalogger', 'token'))
+    # datalogger = DataLogger(config.get('datalogger', 'url'), config.get('datalogger', 'token'))
+    datalogger = DataLogger(config)
 
     device_manager.update_devices()
     logging.info("Starting discovery...")
@@ -138,12 +149,4 @@ def main():
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    pending = asyncio.Task.all_tasks()
-    for task in pending:
-        task.cancel()
-        # Now we should await task to execute it's cancellation.
-        # Cancelled task raises asyncio.CancelledError that we can suppress:
-        with suppress(asyncio.CancelledError):
-            loop.run_until_complete(task)
+    main()
