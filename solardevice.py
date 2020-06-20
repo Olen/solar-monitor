@@ -61,11 +61,11 @@ class SolarDevice(blegatt.Device):
         self.write_buffer = []
 
         if "battery" in self.logger_name:
-            self.entities = BatteryDevice(self.alias)
+            self.entities = BatteryDevice(name=self.logger_name, alias=self.alias)
         elif "regulator" in self.logger_name:
-            self.entities = RegulatorDevice(self.alias)
+            self.entities = RegulatorDevice(name=self.logger_name, alias=self.alias)
         else:
-            self.entities = PowerDevice()
+            self.entities = PowerDevice(name=self.logger_name, alias=self.alias)
 
 
     def add_services(self, services_list, notify_list, services_write_list, write_list):
@@ -431,8 +431,9 @@ class PowerDevice():
     Soc is stored as /10 %
     Most setters will validate the input to guard against false Zero-values
     '''
-    def __init__(self, alias=None):
+    def __init__(self, alias=None, name=None):
         self._alias = alias
+        self._name = name
         self._device_id = 0
         self._mcurrent = {
             'val': 0,
@@ -453,7 +454,7 @@ class PowerDevice():
             'maxdiff': 2
         }
         self._dkelvin = {
-            'val': 0,
+            'val': 2731,
             'min': 1731,
             'max': 3731,
             'maxdiff': 20
@@ -487,6 +488,10 @@ class PowerDevice():
     @poll_register.setter
     def poll_register(self, value):
         self._poll_register = value
+
+    @property
+    def name(self):
+        return self._name
 
 
     @property
@@ -610,18 +615,18 @@ class PowerDevice():
         definition = getattr(self, var)
         val = float(val)
         if val == definition['val']:
-            logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.alias, var, definition['val'], val))
+            logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.name, var, definition['val'], val))
             return False
         if val > definition['max']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> max {})".format(self.alias, var, definition['val'], val, definition['max']))
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> max {})".format(self.name, var, definition['val'], val, definition['max']))
             return False
         if val < definition['min']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.alias, var, definition['val'], val, definition['min']))
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.name, var, definition['val'], val, definition['min']))
             return False
-        if definition['val'] != 0 and abs(val - definition['val']) > definition['maxdiff']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.alias, var, definition['val'], val, definition['maxdiff']))
+        if (definition['val'] != 0 and definition['val'] != 2731) and abs(val - definition['val']) > definition['maxdiff']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, var, definition['val'], val, definition['maxdiff']))
             return False
-        logging.debug("[{}] Value of {} changed from {} to {}".format(self.alias, var, definition['val'], val))
+        logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
         self.__dict__[var]['val'] = val
         
 
@@ -631,8 +636,8 @@ class RegulatorDevice(PowerDevice):
     Special class for Regulator-devices.  
     Extending PowerDevice class with more properties specifically for the regulators
     '''
-    def __init__(self, alias):
-        super().__init__(alias=alias)
+    def __init__(self, alias=None, name=None):
+        super().__init__(alias=alias, name=name)
         self._device_id = 255
         self._send_ack = True
         self._need_poll = True
@@ -801,8 +806,8 @@ class BatteryDevice(PowerDevice):
     Extending PowerDevice class with more properties specifically for the batteries
     '''
 
-    def __init__(self, alias):
-        super().__init__(alias=alias)
+    def __init__(self, alias=None, name=None):
+        super().__init__(alias=alias, name=name)
         self._health = None
         self._state = None
         self._charge_cycles = {
@@ -912,11 +917,11 @@ class BatteryDevice(PowerDevice):
 
     def state_changed(self, was):
         if was != self.state:
-            logging.info("[{}] Value of {} changed from {} to {}".format(self.alias, 'state', was, self.state))
+            logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'state', was, self.state))
 
     def health_changed(self, was):
         if was != self.health:
-            logging.info("[{}] Value of {} changed from {} to {}".format(self.alias, 'health', was, self.health))
+            logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
 
     def parse_notification(self, value):
         if self.smartPowerUtil.broadcastUpdate(value):

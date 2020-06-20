@@ -21,7 +21,6 @@ if c.getboolean('monitor', 'debug', fallback=False):
     print("Debug enabled")
     level = logging.DEBUG
 else:
-    print("Debug disabled")
     level = logging.INFO
 
 duallog.setup('solar-monitor', minLevel=level, fileLevel=logging.INFO, rotation='daily', keep=30)
