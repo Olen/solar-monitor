@@ -24,5 +24,9 @@ SOLARLINK_NOTIFY_UUID =  0000fff1-0000-1000-8000-00805f9b34fb
 url = http://server/solar/api/
 token = 39129e20be0503937cb72a5f719337cc
 
+[mqtt]
+broker = mqtt.server.addr     # Address to the mqtt broker
+prefix = solar                # All topics are prefixed by "prefix/"
+                              # E.g. prefix/battery_1/voltage
 
 
