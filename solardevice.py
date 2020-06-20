@@ -159,20 +159,22 @@ class SolarDevice(blegatt.Device):
             t.start()
 
     def thread_poll(self):
-        c = 0
+        # c = 0
         while True:
-            c = c + 1
-            # self.async_poll_data('BatteryParamInfo')
-            # time.sleep(2)
+            # c = c + 1
+            self.async_poll_data('SolarPanelAndBatteryState')
+            time.sleep(2)
+            self.async_poll_data('BatteryParamInfo')
+            time.sleep(2)
+            self.async_poll_data('SolarPanelInfo')
+            time.sleep(2)
             self.async_poll_data('ParamSettingData')
             time.sleep(5)
-            # self.async_poll_data('SolarPanelInfo')
-            # time.sleep(2)
-            if c < 10:
-                self.regulator_power("on")
-            else:
-                self.regulator_power("off")
-            time.sleep(5)
+            # if c < 10:
+            #    self.regulator_power("on")
+            #else:
+            #    self.regulator_power("off")
+            # time.sleep(5)
 
 
     def async_poll_data(self, register):
@@ -180,7 +182,6 @@ class SolarDevice(blegatt.Device):
         if register == 'SolarPanelAndBatteryState':
             ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
             ReadingCount = SLinkData.SolarPanelAndBatteryState.READ_WORD
-
         elif register == 'BatteryParamInfo':
             ReadingRegId = SLinkData.BatteryParamInfo.REG_ADDR
             ReadingCount = SLinkData.BatteryParamInfo.READ_WORD
@@ -308,6 +309,7 @@ class SolarDevice(blegatt.Device):
         # retCmdData = self.smartPowerUtil.broadcastUpdate(value)
         # if self.smartPowerUtil.handleMessage(retCmdData):
         if self.entities.send_ack:
+            time.sleep(.5)
             msg = "main recv da ta[{0:02x}] [".format(value[0])
             self.characteristic_write_value(bytearray(msg, "ascii"))
             # self.characteristic_write_value(bytearray(msg, "ascii"))
@@ -315,7 +317,7 @@ class SolarDevice(blegatt.Device):
         if self.entities.parse_notification(value):
             try:
                 self.datalogger.log(self.logger_name, 'current', self.entities.current)
-            except:
+            except Exception as e:
                 pass
             try:
                 self.datalogger.log(self.logger_name, 'input_current', self.entities.input_current)
@@ -402,7 +404,7 @@ class SolarDevice(blegatt.Device):
 
     def characteristic_write_value(self, value):
         if self.device_write_characteristic:
-            logging.info("[{}] Writing data to {} - {} ({})".format(self.logger_name, self.device_write_characteristic.uuid, value, bytearray(value).hex()))
+            logging.debug("[{}] Writing data to {} - {} ({})".format(self.logger_name, self.device_write_characteristic.uuid, value, bytearray(value).hex()))
             self.writing = value
             self.device_write_characteristic.write_value(value)
         else:
@@ -410,7 +412,7 @@ class SolarDevice(blegatt.Device):
 
     def characteristic_write_value_succeeded(self, characteristic):
         super().characteristic_write_value_succeeded(characteristic)
-        logging.info("[{}] Write to characteristic done for: [{}]".format(self.logger_name, characteristic.uuid))
+        logging.debug("[{}] Write to characteristic done for: [{}]".format(self.logger_name, characteristic.uuid))
         self.writing = False
 
     def characteristic_write_value_failed(self, characteristic, error):
@@ -429,18 +431,50 @@ class PowerDevice():
     Soc is stored as /10 %
     Most setters will validate the input to guard against false Zero-values
     '''
-    _mcapacity = 0
-    _mcurrent = 0
-    _mvoltage = 0
-    _mpower = 0
-    _dkelvin = 0
-    _dsoc = 0
-    _msg = None
-    _status = None
-    _poll_register = None
-    _need_poll = False
     def __init__(self, alias=None):
         self._alias = alias
+        self._device_id = 0
+        self._mcurrent = {
+            'val': 0,
+            'min': 0,
+            'max': 30000,
+            'maxdiff': 500
+        }
+        self._mpower = {
+            'val': 0,
+            'min': 0,
+            'max': 200000,
+            'maxdiff': 10000
+        }
+        self._dsoc = {
+            'val': 0,
+            'min': 1,
+            'max': 1000,
+            'maxdiff': 2
+        }
+        self._dkelvin = {
+            'val': 0,
+            'min': 1731,
+            'max': 3731,
+            'maxdiff': 20
+        }
+        self._mcapacity = {
+            'val': 0,
+            'min': 0,
+            'max': 250000,
+            'maxdiff': 10
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 48000,
+            'maxdiff': 12000
+        }
+        self._msg = None
+        self._status = None
+        self._poll_register = None
+        self._need_poll = False
+        self._send_ack = False
 
     @property
     def need_polling(self):
@@ -461,126 +495,89 @@ class PowerDevice():
 
     @property
     def mcurrent(self):
-        return self._mcurrent
+        return self._mcurrent['val']
     @mcurrent.setter
     def mcurrent(self, value):
-        if value == 0 and (self._mcurrent > 500 or self._mcurrent < -500):
-            # Ignore probable invalid values
-            return 
-        self.value_changed('mcurrent', self.mcurrent, value)
-        self._mcurrent = value
+        self.validate('_mcurrent', value)
 
     @property
     def current(self):
-        return round(self._mcurrent / 1000, 1)
+        return round(self.mcurrent / 1000, 1)
     @current.setter
     def current(self, value):
-        if value == 0 and (self._mcurrent > 500 or self._mcurrent < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('current', self.current, value)
-        self._mcurrent = value * 1000
+        self.mcurrent = value * 1000
 
 
     @property
     def mpower(self):
-        return self._mpower
+        return self._mpower['val']
     @mpower.setter
     def mpower(self, value):
-        if value == 0 and (self._power > 500 or self._mpower < -500):
-            # Ignore probable invalid values
-            return 
-        self.value_changed('mpower', self.mpower, value)
-        self._mpower = value
+        self.validate('_mpower', value)
 
     @property
     def power(self):
-        return round(self._mpower / 1000, 1)
+        return round(self.mpower / 1000, 1)
     @power.setter
     def power(self, value):
-        if value == 0 and (self._mpower > 500 or self._mpower < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('power', self.power, value)
-        self._mpower = value * 1000
+        self.mpower = value * 1000
 
 
     @property 
     def dsoc(self):
-        return self._dsoc
+        return self._dsoc['val']
     @dsoc.setter
     def dsoc(self, value):
-        if value > 0:
-            self.value_changed('dsoc', self.dsoc, value)
-            self._dsoc = value
+        self.validate('_dsoc', value)
+
     @property 
     def soc(self):
-        return (self._dsoc / 10)
+        return (self.dsoc / 10)
     @soc.setter
     def soc(self, value):
-        if value > 0:
-            self.value_changed('soc', self.soc, value)
-            self._dsoc = value * 10
+        self.dsoc = value * 10
 
     @property
     def temperature(self):
-        return self._dkelvin
+        return self._dkelvin['val']
     @temperature.setter
     def temperature(self, value):
-        if value > 0 and (value > self.temperature + 2 or value < self.temperature - 2):
-            # Ignore probable invalid values
-            self.value_changed('temperature', self.temperature, value)
-            self._dkelvin = value
+        self.validate('_dkelvin', value)
+
     @property
     def temperature_celsius(self):
-        return (self._dkelvin - 2731) / 10 
-
+        return round((self.temperature - 2731) * 0.1, 1)
     @temperature_celsius.setter
     def temperature_celsius(self, value):
-        if value == 0 and (self._dkelvin > (2731 + 50) or self._dkelvin < (2731 - 50)):
-            # Ignore probable invalid values (sudden drops of +/- 5 degrees ending on exactly 0)
-            return
-        self.value_changed('temperature_celsius', self.temperature_celsius, value)
-        self._dkelvin = (value * 10) + 2731
+        self.dkelvin = (value * 10) + 2731
 
     @property
     def mcapacity(self):
-        return self._mcapacity
+        return self._mcapacity['val']
     @mcapacity.setter
     def mcapacity(self, value):
-        if value > 10000:
-            self.value_changed('mcapacity', self.mcapacity, value)
-            self._mcapacity = value
+        self.validate('_mcapacity', value)
 
     @property
     def capacity(self):
-        return round(self._mcapacity / 1000, 1)
-
+        return round(self.mcapacity / 1000, 1)
     @capacity.setter
     def capacity(self, value):
-        if value > 10:
-            self.value_changed('capacity', self.capacity, value)
-            self._mcapacity = value * 1000
+        self.mcapacity = value * 1000
 
     @property
     def mvoltage(self):
-        return self._mvoltage
-
+        return self._mvoltage['val']
     @mvoltage.setter
     def mvoltage(self, value):
-        if value > 0 and (value > self.mvoltage + 10 or value < self.mvoltage - 10):
-            self.value_changed('mvoltage', self.mvoltage, value)
-            self._mvoltage = value
+        self.validate('_mvoltage', value)
 
     @property
     def voltage(self):
-        return round(self._mvoltage / 1000, 1)
-
+        return round(self.mvoltage / 1000, 1)
     @voltage.setter
     def voltage(self, value):
-        if value > 0:
-            self.value_changed('voltage', self.voltage, value)
-            self._mvoltage = value * 1000
+        self.mvoltage = value * 1000
 
     @property
     def msg(self):
@@ -608,7 +605,25 @@ class PowerDevice():
             logging.debug("Value of {} changed from {} to {}".format(var, was, val))
             self.dumpall()
 
-
+    
+    def validate(self, var, val):
+        definition = getattr(self, var)
+        val = float(val)
+        if val == definition['val']:
+            logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.alias, var, definition['val'], val))
+            return False
+        if val > definition['max']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> max {})".format(self.alias, var, definition['val'], val, definition['max']))
+            return False
+        if val < definition['min']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.alias, var, definition['val'], val, definition['min']))
+            return False
+        if definition['val'] != 0 and abs(val - definition['val']) > definition['maxdiff']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.alias, var, definition['val'], val, definition['maxdiff']))
+            return False
+        logging.debug("[{}] Value of {} changed from {} to {}".format(self.alias, var, definition['val'], val))
+        self.__dict__[var]['val'] = val
+        
 
 
 class RegulatorDevice(PowerDevice):
@@ -616,18 +631,48 @@ class RegulatorDevice(PowerDevice):
     Special class for Regulator-devices.  
     Extending PowerDevice class with more properties specifically for the regulators
     '''
-    _device_id = 255
-    _send_ack = True
-    _need_poll = True
-    _power_switch_status = 0
-    _input_mvoltage = 0
-    _charge_mvoltage = 0
-    _input_mcurrent = 0
-    _charge_mcurrent = 0
-    _input_mpower = 0
-    _charge_mpower = 0
     def __init__(self, alias):
         super().__init__(alias=alias)
+        self._device_id = 255
+        self._send_ack = True
+        self._need_poll = True
+        self._input_mcurrent = {
+            'val': 0,
+            'min': 0,
+            'max': 30000,
+            'maxdiff': 500
+        }
+        self._input_mpower = {
+            'val': 0,
+            'min': 0,
+            'max': 200000,
+            'maxdiff': 10000
+        }
+        self._input_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 48000,
+            'maxdiff': 12000
+        }
+        self._charge_mcurrent = {
+            'val': 0,
+            'min': 0,
+            'max': 30000,
+            'maxdiff': 500
+        }
+        self._charge_mpower = {
+            'val': 0,
+            'min': 0,
+            'max': 200000,
+            'maxdiff': 10000
+        }
+        self._charge_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 48000,
+            'maxdiff': 12000
+        }
+        self._power_switch_status = 0
         self.solarLinkUtil = SolarLinkUtil(self.alias, self)  
 
     @property
@@ -647,122 +692,96 @@ class RegulatorDevice(PowerDevice):
         self._power_switch_status = value
 
 
+    # Voltage
+
     @property
     def input_mvoltage(self):
-        return self._input_mvoltage
+        return self._input_mvoltage['val']
     @input_mvoltage.setter
     def input_mvoltage(self, value):
-        if value == 0 and (self._input_mvoltage > 500 or self._input_mvoltage < -500):
-            # Ignore probable invalid values
-            return 
-        self.value_changed('input_mvoltage', self.input_mvoltage, value)
-        self._input_mvoltage = value
+        self.validate('_input_mvoltage', value)
 
     @property
     def input_voltage(self):
-        return round(self._input_mvoltage / 1000, 1)
+        return round(self.input_mvoltage / 1000, 1)
     @input_voltage.setter
     def input_voltage(self, value):
-        if value == 0 and (self._input_mvoltage > 500 or self._input_mvoltage < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('input_voltage', self.input_voltage, value)
-        self._input_mvoltage = value * 1000
-
-
-    @property
-    def input_mcurrent(self):
-        return self._input_mcurrent
-    @input_mcurrent.setter
-    def input_mcurrent(self, value):
-        if value == 0 and (self._input_mcurrent > 500 or self._input_mcurrent < -500):
-            # Ignore probable invalid values
-            return 
-        self.value_changed('input_mcurrent', self.input_mcurrent, value)
-        self._input_mcurrent = value
-
-    @property
-    def input_current(self):
-        return round(self._input_mcurrent / 1000, 1)
-    @input_current.setter
-    def input_current(self, value):
-        if value == 0 and (self._input_mcurrent > 500 or self._input_mcurrent < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('input_current', self.input_current, value)
-        self._input_mcurrent = value * 1000
-
+        self.input_mvoltage = value * 1000
 
     @property
     def charge_mvoltage(self):
-        return self._charge_mvoltage
+        return self._charge_mvoltage['val']
     @charge_mvoltage.setter
     def charge_mvoltage(self, value):
-        if value == 0 and (self._charge_mvoltage > 500 or self._charge_mvoltage < -500):
-            # Ignore probable invalid values
-            return 
-        self.value_changed('charge_mvoltage', self.charge_mvoltage, value)
-        self._charge_mvoltage = value
+        self.validate('_charge_mvoltage', value)
 
     @property
     def charge_voltage(self):
-        return round(self._charge_mvoltage / 1000, 1)
+        return round(self.charge_mvoltage / 1000, 1)
     @charge_voltage.setter
     def charge_voltage(self, value):
-        if value == 0 and (self._charge_mvoltage > 500 or self._charge_mvoltage < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('charge_voltage', self.charge_voltage, value)
-        self._charge_mvoltage = value * 1000
+        self.charge_mvoltage = value * 1000
 
+    # current
+
+    @property
+    def input_mcurrent(self):
+        return self._input_mcurrent['val']
+    @input_mcurrent.setter
+    def input_mcurrent(self, value):
+        self.validate('_input_mcurrent', value)
+
+    @property
+    def input_current(self):
+        return round(self.input_mcurrent / 1000, 1)
+    @input_current.setter
+    def input_current(self, value):
+        self.input_mcurrent = value * 1000
 
     @property
     def charge_mcurrent(self):
-        return self._charge_mcurrent
+        return self._charge_mcurrent['val']
     @charge_mcurrent.setter
     def charge_mcurrent(self, value):
-        if value == 0 and (self._charge_mcurrent > 500 or self._charge_mcurrent < -500):
-            # Ignore probable invalid values
-            return 
-        self.value_changed('charge_mcurrent', self.charge_mcurrent, value)
-        self._charge_mcurrent = value
+        self.validate('_charge_mcurrent', value)
 
     @property
     def charge_current(self):
-        return round(self._charge_mcurrent / 1000, 1)
+        return round(self.charge_mcurrent / 1000, 1)
     @charge_current.setter
     def charge_current(self, value):
-        if value == 0 and (self._charge_mcurrent > 500 or self._charge_mcurrent < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('charge_current', self.charge_current, value)
-        self._charge_mcurrent = value * 1000
+        self.charge_mcurrent = value * 1000
 
+
+    # power
+
+    @property
+    def input_mpower(self):
+        return self._input_mpower['val']
+    @input_mpower.setter
+    def input_mpower(self, value):
+        self.validate('_input_mpower', value)
 
     @property
     def input_power(self):
-        return round(self._input_mpower / 1000, 1)
+        return round(self.input_mpower / 1000, 1)
     @input_power.setter
     def input_power(self, value):
-        if value == 0 and (self._input_mpower > 500 or self._input_mpower < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('input_power', self.input_power, value)
-        self._input_mpower = value * 1000
+        self.input_mpower = value * 1000
+
+    @property
+    def charge_mpower(self):
+        return self._charge_mpower['val']
+    @charge_mpower.setter
+    def charge_mpower(self, value):
+        self.validate('_charge_mpower', value)
 
     @property
     def charge_power(self):
-        return round(self._charge_mpower / 1000, 1)
+        return round(self.charge_mpower / 1000, 1)
     @charge_power.setter
     def charge_power(self, value):
-        if value == 0 and (self._charge_mpower > 500 or self._charge_mpower < -500):
-            # Ignore probable invalid values
-            return
-        self.value_changed('charge_power', self.charge_power, value)
-        self._charge_mpower = value * 1000
-
-
-
+        self.charge_mpower = value * 1000
 
 
 
@@ -781,18 +800,27 @@ class BatteryDevice(PowerDevice):
     Special class for Battery-devices.  
     Extending PowerDevice class with more properties specifically for the batteries
     '''
-    _charge_cycles = 0
-    _health = None
-    _state = None
-    _send_ack = False
-    _cell_mvoltage = {}
 
     def __init__(self, alias):
         super().__init__(alias=alias)
+        self._health = None
+        self._state = None
+        self._charge_cycles = {
+            'val': 0,
+            'min': 0,
+            'max': 10000,
+            'maxdiff': 1
+        }
+        self._cell_mvoltage = {}
         i = 0
         while i < 16:
             i = i + 1
-            self._cell_mvoltage[i] = 0
+            self._cell_mvoltage[i] = {
+                'val': 0,
+                'min': 2000,
+                'max': 4000,
+                'maxdiff': 500
+            }
         self.smartPowerUtil = SmartPowerUtil(self.alias, self)  
 
     @property
@@ -805,13 +833,12 @@ class BatteryDevice(PowerDevice):
 
     @property
     def charge_cycles(self):
-        return self._charge_cycles
+        return self._charge_cycles['val']
 
     @charge_cycles.setter
     def charge_cycles(self, value):
+        self.validate('_charge_cycles', value)
         if value > 0:
-            self.value_changed('charge_cycles', self.charge_cycles, value)
-            self._charge_cycles = value
             was = self.health
             if value > 2000:
                 self._health = 'good'
@@ -830,7 +857,7 @@ class BatteryDevice(PowerDevice):
     def mcurrent(self, value):
         super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
         # super().mcurrent = value
-        if value == 0 and (self._mcurrent > 500 or self._mcurrent < -500):
+        if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
             return
         was = self.state
         if value > 20:
@@ -845,7 +872,7 @@ class BatteryDevice(PowerDevice):
     def current(self, value):
         super(BatteryDevice, self.__class__).current.fset(self, value)
         # super().current(value)
-        if value == 0 and (self._mcurrent > 500 or self._mcurrent < -500):
+        if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
             return
         was = self.state
         if value > 0.02:
@@ -863,9 +890,9 @@ class BatteryDevice(PowerDevice):
     def cell_mvoltage(self, value):
         cell = value[0]
         new_value = value[1]
-        current_value = self._cell_mvoltage[cell]
-        if new_value > 0 and (new_value > current_value + 10 or new_value < current_value - 10):
-            self._cell_mvoltage[cell] = new_value
+        current_value = self._cell_mvoltage[cell]['val']
+        if new_value > 0 and abs(new_value - current_value) > 10:
+            self._cell_mvoltage[cell]['val'] = new_value
 
     @property
     def afestatus(self):
@@ -885,11 +912,11 @@ class BatteryDevice(PowerDevice):
 
     def state_changed(self, was):
         if was != self.state:
-            logging.info("Value of {} changed from {} to {}".format('state', was, self.state))
+            logging.info("[{}] Value of {} changed from {} to {}".format(self.alias, 'state', was, self.state))
 
     def health_changed(self, was):
         if was != self.health:
-            logging.info("Value of {} changed from {} to {}".format('health', was, self.health))
+            logging.info("[{}] Value of {} changed from {} to {}".format(self.alias, 'health', was, self.health))
 
     def parse_notification(self, value):
         if self.smartPowerUtil.broadcastUpdate(value):
