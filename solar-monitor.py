@@ -17,13 +17,14 @@ import duallog
 c = configparser.ConfigParser()
 c.read('solar-monitor.ini')
 
+
 if c.getboolean('monitor', 'debug', fallback=False):
     print("Debug enabled")
     level = logging.DEBUG
 else:
     level = logging.INFO
 
-duallog.setup('solar-monitor', minLevel=level, fileLevel=logging.INFO, rotation='daily', keep=30)
+duallog.setup('solar-monitor', minLevel=level, fileLevel=level, rotation='daily', keep=30)
 # duallog.setup('solar-monitor', minLevel=logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
