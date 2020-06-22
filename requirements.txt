@@ -1,0 +1,7 @@
+blegatt
+configparser
+libscrc
+json
+requests
+paho-mqtt
+threading
