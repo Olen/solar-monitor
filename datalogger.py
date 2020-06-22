@@ -9,12 +9,20 @@ import paho.mqtt.client as paho
 
 class DataLoggerMqtt():
     def __init__(self, broker, port):
+        logging.debug("Creating new MQTT-logger")
         self.broker = broker
-        self.client = paho.Client("home-assistant")                           #create client object
-        self.client.on_publish = self.on_publish                          #assign function to callback
-        self.client.connect(broker,port)                                 #establish connection
+        self.client = paho.Client("home-assistant")                         # create client object
+        self.client.on_publish = self.on_publish                            # assign function to callback
+        self.client.on_message = self.on_message                            # attach function to callback
+        self.client.on_subscribe = self.on_subscribe                        # attach function to callback
+        self.client.on_log = self.on_log
+
+        self.client.connect(broker, port)                                   # establish connection
+        self.client.loop_start()                                            # start the loop
+
         self._prefix = ""
         self.sensors = []
+        self.sets = []
 
     @property
     def prefix(self):
@@ -26,29 +34,56 @@ class DataLoggerMqtt():
             val = val + "/"
         self._prefix = val
 
+    def publish(self, device, var, val):
+        topic = "{}{}/{}/state".format(self.prefix, device, var)
+        if topic not in self.sensors:
+            self.create_sensor(device, var)
+            self.create_listener(device, var)
+        logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
+        ret = self.client.publish(topic, val)
+
 
     def create_sensor(self, device, var):
-        topic = "homeassistant/sensor/{}/{}/config".format(device, var)
+        topic = "{}{}/{}/state".format(self.prefix, device, var)
+        logging.debug("Creating MQTT-sensor {}".format(topic))
+        ha_topic = "homeassistant/sensor/{}/{}/config".format(device, var)
         val = {
             "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
-            "state_topic": "{}sensor/{}/{}/state".format(self.prefix, device, var)
+            "state_topic": topic
         }
-        # if var ==
-        ret = self.client.publish(topic, json.dumps(val))
-        self.sensors.append("{}sensor/{}/{}/state".format(self.prefix, device, var))
+        ret = self.client.publish(ha_topic, json.dumps(val))
+        self.sensors.append(topic)
+
+
+    def create_listener(self, device, var):
+        topic = "{}{}/{}/set".format(self.prefix, device, var)
+        logging.debug("Creating MQTT-listener {}".format(topic))
+        try:
+            self.client.subscribe((topic, 0))
+        except Exception as e:
+            logging.error("MQTT: {}".format(e))
+
 
 
     def on_publish(self, client, userdata, result):             #create function for callback
         logging.debug("Published to MQTT")
 
-    def publish(self, device, var, val):
-        topic = "{}sensor/{}/{}/state".format(self.prefix, device, var)
-        if topic not in self.sensors:
-            logging.debug("Creating MQTT-sensor {}{}/{}".format(self.prefix, device, var))
-            self.create_sensor(device, var)
-        logging.debug("Publishing to MQTT {}: {}{}/{}/state = {}".format(self.broker, self.prefix, device, var, val))
-        ret = self.client.publish(topic, val)
+    def on_subscribe(self, client, userdata, mid, granted_qos):
+        # logging.debug("Subscribed to MQTT topic {}".format(userdata))
+        pass
 
+
+    def on_message(self, client, userdata, message):
+        topic = message.topic
+        payload = message.payload.decode("utf-8")
+        self.sets.append((topic, payload))
+        logging.debug("MQTT message received {}".format(str(message.payload.decode("utf-8"))))
+        logging.debug("MQTT message topic={}".format(message.topic))
+        logging.debug("MQTT message qos={}".format(message.qos))
+        logging.debug("MQTT message retain flag={}".format(message.retain))
+
+    def on_log(self, client, userdata, level, buf):
+        logging.debug("MQTT {}".format(buf))
 
 
 
@@ -56,6 +91,7 @@ class DataLoggerMqtt():
 class DataLogger():
     def __init__(self, config):
         # config.get('datalogger', 'url'), config.get('datalogger', 'token')
+        logging.debug("Creating new DataLogger")
         self.url = None
         self.mqtt = None
         if config.get('datalogger', 'url', fallback=None):
