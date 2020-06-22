@@ -14,7 +14,7 @@ import logging
 
 
 
-class SmartPowerUtil():
+class MeritsunUtil():
     '''
     Class for reading and parsing data from various SpartPower-BLE-streams
     '''

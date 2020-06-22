@@ -8,7 +8,6 @@ import blegatt
 import time
 
 from solardevice import SolarDeviceManager, SolarDevice, PowerDevice, BatteryDevice, RegulatorDevice
-from smartpowerutil import SmartPowerUtil
 from datalogger import DataLogger
 
 import logging 

@@ -19,7 +19,7 @@ import logging
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
 from datalogger import DataLogger
-from smartpowerutil import SmartPowerUtil
+from mertsunutil import MeritsunUtil
 from solarlinkutil import SolarLinkUtil
 
 
@@ -802,7 +802,7 @@ class BatteryDevice(PowerDevice):
                 'max': 4000,
                 'maxdiff': 500
             }
-        self.deviceUtil = SmartPowerUtil(self.alias, self)  
+        self.deviceUtil = MeritsunUtil(self.alias, self)  
 
     @property
     def device_id(self):
