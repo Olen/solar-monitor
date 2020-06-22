@@ -24,6 +24,7 @@ You need the following:
 * solardevice.py    Extension of blegatt and some classes to store the values that are read from the BLE-devices
 * meritsunutil.py   Parsing and interpreting data from the Meritsun BLE-devices
 * solarlinkutil.py  Parsing and interpreting data from the SolarLink BLE-devices
+* duallog.py        CLI and file-logger with multiple destinations
 * datalogger.py     Class for pushing data to remote servers
 
 Also
@@ -70,7 +71,7 @@ Run solar-monitor.py (might require root privileges to access bluetooth directly
 2020-06-22 13:34:27,440 INFO    : [battery_1] Sending new data voltage: 13.6
 2020-06-22 13:34:27,442 INFO    : [battery_1] Sending new data power: 0.0
 ```
-Updates can be sent to a remote server using either MQTT or using JSON over HTTP(s)
+Updates can be sent to a remote server using either MQTT or JSON over HTTP(s)
 
 
 ## MQTT
