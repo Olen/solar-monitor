@@ -65,7 +65,7 @@ class ModbusData(object):
         return bytes
 
     @classmethod
-    def BuildWriteRegCmd(self, dev_addr, start, data):
+    def BuildWriteRegsCmd(self, dev_addr, start, data):
         bytes = [None]*8
         basis = self.BuildRequestBasis(6, dev_addr)
         # System.arraycopy(basis, 0, bytes, 0, )

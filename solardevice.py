@@ -22,16 +22,8 @@ import logging
 from datalogger import DataLogger
 from smartpowerutil import SmartPowerUtil
 from solarlinkutil import SolarLinkUtil
-from slink_maincommon import MainCommon
-from slink_modbusdata import ModbusData
-from slink_realtimemonitor import SLinkRealTimeMonitor
-from slinkdata import SLinkData
 
 
-
-
-import logging 
-import duallog
 
 # implementation of blegatt.DeviceManager, discovers any GATT device
 class SolarDeviceManager(blegatt.DeviceManager):
@@ -56,7 +48,6 @@ class SolarDevice(blegatt.Device):
         self.write_list = []
         self.device_write_characteristic = None
         self.datalogger = None
-        self.MainCommon = MainCommon(self)
         self.writing = False
         self.write_buffer = []
 
@@ -75,6 +66,7 @@ class SolarDevice(blegatt.Device):
         self.services_write_list = services_write_list
     def add_datalogger(self, datalogger):
         self.datalogger = datalogger
+        self.entities.add_datalogger(datalogger)
 
     @property
     def alias(self):
@@ -118,15 +110,6 @@ class SolarDevice(blegatt.Device):
 
 
 
-                # only for reading a characteristic
-                # for descriptor in characteristic.descriptors:
-                    # print("[%s]\t\t\tDescriptor [%s] (%s)" % (self.mac_address, descriptor.uuid, descriptor.read_value()))
-
-        # for service in self.services:
-        # device_notification_service = next(
-        #     s for s in self.services
-        #     if s.uuid in self.services_list)
-
         if device_notification_service:
             for c in device_notification_service.characteristics:
                 if c.uuid in self.notify_list:
@@ -140,65 +123,79 @@ class SolarDevice(blegatt.Device):
                     logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
                     self.device_write_characteristic = c
 
-        # device_notification_characteristic = next(
-        #     c for c in device_notification_service.characteristics
-        #     if c.uuid in self.notify_list)
-        # logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
-        # logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, device_notification_characteristic.uuid))
-        # device_notification_characteristic.enable_notifications()
-
-        # self.device_write_characteristic = next(
-        #     c for c in device_notification_service.characteristics
-        #     if c.uuid in self.write_list)
-        # logging.info("[{}] Found dev write char [{}]".format(self.logger_name, self.device_write_characteristic.uuid))
-
 
         if self.entities.need_polling:
             t = threading.Thread(target=self.thread_poll)
             t.daemon = True 
+            t.name = "Poller-thread"
+            logging.debug("Starting new thread")
             t.start()
 
     def thread_poll(self):
-        # c = 0
+        # Implement polling in a separate thread to be able to
+        # sleep without blocking notifications
+
+        c = 0
         while True:
-            # c = c + 1
-            self.async_poll_data('SolarPanelAndBatteryState')
-            time.sleep(2)
-            self.async_poll_data('BatteryParamInfo')
-            time.sleep(2)
-            self.async_poll_data('SolarPanelInfo')
-            time.sleep(2)
-            self.async_poll_data('ParamSettingData')
-            time.sleep(5)
-            # if c < 10:
-            #    self.regulator_power("on")
-            #else:
-            #    self.regulator_power("off")
-            # time.sleep(5)
+            logging.debug("Looping thread {} {}".format(threading.currentThread().name, c))
+            c = c + 1
+            if c == 1:
+                self.async_poll_data('BatteryParamInfo')
+            if c == 3:
+                self.async_poll_data('SolarPanelInfo')
+            # if c == 5:
+            #     self.async_poll_data('SolarPanelAndBatteryState')
+            # if c == 7:
+            #     self.async_poll_data('ParamSettingData')
+
+            cmds = self.entities.mqtt_poller()
+            if len(cmds) > 0: 
+                for cmd in cmds:
+                    if cmd == 'cmdPowerSwitchOff':
+                        self.entities.power_switch_state = 0
+                        self.async_poll_data('RegulatorPowerOff')
+                    if cmd == 'cmdPowerSwitchOn':
+                        self.entities.power_switch_state = 1
+                        self.async_poll_data('RegulatorPowerOn')
+                    logging.info("CMD: {}".format(cmd))
+                    time.sleep(1)
+                # Refresh data after cmd
+                self.async_poll_data('SolarPanelInfo')
+                time.sleep(1)
+                self.async_poll_data('BatteryParamInfo')
+
+            time.sleep(1)
+            if c == 10:
+                c = 0
 
 
-    def async_poll_data(self, register):
+    def async_poll_data(self, cmd):
+        data = None
+        function = self.entities.deviceUtil.function_READ
+        if cmd == 'SolarPanelAndBatteryState':
+            regAddr = self.entities.deviceUtil.SolarPanelAndBatteryState.REG_ADDR
+            readWrd = self.entities.deviceUtil.SolarPanelAndBatteryState.READ_WORD
+        elif cmd == 'BatteryParamInfo':
+            regAddr = self.entities.deviceUtil.BatteryParamInfo.REG_ADDR
+            readWrd = self.entities.deviceUtil.BatteryParamInfo.READ_WORD
+        elif cmd == 'SolarPanelInfo':
+            regAddr = self.entities.deviceUtil.SolarPanelInfo.REG_ADDR
+            readWrd = self.entities.deviceUtil.SolarPanelInfo.READ_WORD
+        elif cmd == 'ParamSettingData':
+            regAddr = self.entities.deviceUtil.ParamSettingData.REG_ADDR
+            readWrd = self.entities.deviceUtil.ParamSettingData.READ_WORD
+        elif cmd == 'RegulatorPowerOn':
+            regAddr = self.entities.deviceUtil.RegulatorPower.REG_ADDR
+            readWrd = self.entities.deviceUtil.RegulatorPower.on
+            function = self.entities.deviceUtil.function_WRITE
+        elif cmd == 'RegulatorPowerOff':
+            regAddr = self.entities.deviceUtil.RegulatorPower.REG_ADDR
+            readWrd = self.entities.deviceUtil.RegulatorPower.off
+            function = self.entities.deviceUtil.function_WRITE
 
-        if register == 'SolarPanelAndBatteryState':
-            ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
-            ReadingCount = SLinkData.SolarPanelAndBatteryState.READ_WORD
-        elif register == 'BatteryParamInfo':
-            ReadingRegId = SLinkData.BatteryParamInfo.REG_ADDR
-            ReadingCount = SLinkData.BatteryParamInfo.READ_WORD
-        elif register == 'SolarPanelInfo':
-            ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
-            ReadingCount = SLinkData.SolarPanelInfo.READ_WORD
-        elif register == 'ParamSettingData':
-            ReadingRegId = SLinkData.ParamSettingData.REG_ADDR
-            ReadingCount = 33
-        elif register == 'RegulatorPowerOn':
-            ReadingRegId = 266
-            ReadingCount = 1
-        elif register == 'RegulatorPowerOff':
-            ReadingRegId = 266
-            ReadingCount = 0
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.entities.poll_register = register
+        data = self.entities.deviceUtil.buildRequest(function, regAddr, readWrd)
+
+        self.entities.poll_register = cmd
         waitcount = 0
         while self.writing:
             logging.debug("Waiting for writing: {} {}".format(self.writing, waitcount))
@@ -206,115 +203,51 @@ class SolarDevice(blegatt.Device):
             waitcount = waitcount + 1
             if waitcount > 5:
                 return False
-        logging.debug("Writing")
+        logging.debug("Writing poll")
         self.characteristic_write_value(data)
         return True
 
 
-    def regulator_power(self, state):
-        if state == "on":
-            self.async_poll_data('RegulatorPowerOn')
-        else: 
-            self.async_poll_data('RegulatorPowerOff')
-
-    def regulator_init(self):
-        logging.info("[{}] Sending magic packet to {}".format(self.logger_name, self.alias))
-        # self.MainCommon.SendUartData(ModbusData.BuildReadRegsCmd(255, 255, 0))
-        '''
-        ReadingRegId = 12
-        ReadingCount = 2
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-        '''
-        # loop = asyncio.get_event_loop()
-        # loop.create_task(self.async_poll_data('BatteryParamInfo'))
-        # asyncio.ensure_future(self.async_poll_data('BatteryParamInfo'))  # fire and forget
-        t = threading.Thread(target=self.async_poll_data, args=['BatteryParamInfo'])
-        t.daemon = True 
-        t.start()
-
-
-        '''
-        # self.characteristic_write_value(data)
-        # while self.writing == True:
-        #    logging.debug("Sleep a bit...")
-        #     await asyncio.sleep(1)
-        # time.sleep(1)
-        self.entities.poll_register = 'BatteryParamInfo'        
-        ReadingRegId = SLinkData.BatteryParamInfo.REG_ADDR
-        ReadingCount = SLinkData.BatteryParamInfo.READ_WORD
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-
-        ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
-        ReadingCount = 4
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-        ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
-        ReadingCount = 3
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-
-        ReadingRegId = SLinkData.ParamSettingData.REG_ADDR
-        ReadingCount = 33
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-        self.run_write_buffer()
-        '''
-        # self.run_write_buffer()
-        return True
-
-        # Repeat
-
-        ReadingRegId = 256
-        ReadingCount = 7
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-
-        ReadingRegId = SLinkData.SolarPanelInfo.REG_ADDR
-        ReadingCount = 4
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-
-        ReadingRegId = SLinkData.SolarPanelAndBatteryState.REG_ADDR
-        ReadingCount = 3
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-
-        ReadingRegId = SLinkData.ParamSettingData.REG_ADDR
-        ReadingCount = 33
-        data = ModbusData.BuildReadRegsCmd(self.entities.device_id, ReadingRegId, ReadingCount)
-        self.write_buffer.append(data)
-
-
-        self.run_write_buffer()
-
-        # await self.characteristic_write_value(str(data))
-        # time.sleep(1)
-
-        # sys.exit()
-
-
-
-    # only for reading a characteristic
-    # def descriptor_read_value_failed(self, descriptor, error):
-        # super().descriptor_read_value_failed(descriptor, error)
-        # print('descriptor_value_failed')
 
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
-        # if "regulator" in self.logger_name:
-        # logging.debug("[{}] Received update".format(self.logger_name))
+
+        # logging.debug("[{}] [{}] Received update".format(self.logger_name, threading.currentThread().name))
         # logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
         # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
-        # retCmdData = self.smartPowerUtil.broadcastUpdate(value)
-        # if self.smartPowerUtil.handleMessage(retCmdData):
+
         if self.entities.send_ack:
             time.sleep(.5)
             msg = "main recv da ta[{0:02x}] [".format(value[0])
             self.characteristic_write_value(bytearray(msg, "ascii"))
-            # self.characteristic_write_value(bytearray(msg, "ascii"))
-            # self.run_write_buffer()
+
         if self.entities.parse_notification(value):
+            # We received some new data. Lets push it to the datalogger
+            items = ['current', 'input_current', 'charge_current',
+                     'voltage', 'input_voltage', 'charge_voltage',
+                     'power',   'input_power',   'charge_power',
+                     'soc', 'capacity', 'charge_cycles', 'state', 'health', 'power_switch_state'
+                    ]
+            for item in items:
+                try:
+                    self.datalogger.log(self.logger_name, item, getattr(self.entities, item))
+                except Exception as e:
+                    logging.debug("[{}] Could not find {}".format(self.logger_name, item))
+                    pass
+
+            # We want celsius, not kelvin
+            try:
+                self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
+            except:
+                pass
+
+            try:
+                for cell in self.entities.cell_mvoltage:
+                    if self.entities.cell_mvoltage[cell] > 0:
+                        self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
+            except:
+                pass
+            '''
             try:
                 self.datalogger.log(self.logger_name, 'current', self.entities.current)
             except Exception as e:
@@ -352,10 +285,6 @@ class SolarDevice(blegatt.Device):
             except:
                 pass
             try:
-                self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
-            except:
-                pass
-            try:
                 self.datalogger.log(self.logger_name, 'soc', self.entities.soc)
             except:
                 pass
@@ -364,7 +293,7 @@ class SolarDevice(blegatt.Device):
             except:
                 pass
             try:
-                self.datalogger.log(self.logger_name, 'cycles', self.entities.charge_cycles)
+                self.datalogger.log(self.logger_name, 'charge_cycles', self.entities.charge_cycles)
             except:
                 pass
             try:
@@ -379,14 +308,9 @@ class SolarDevice(blegatt.Device):
                 self.datalogger.log(self.logger_name, 'health', self.entities.health)
             except:
                 pass
-            try:
-                for cell in self.entities.cell_mvoltage:
-                    if self.entities.cell_mvoltage[cell] > 0:
-                        self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
-            except:
-                pass
 
             # logging.info("Cell voltage: {}".format(self.entities.cell_voltage))
+            '''
 
     def characteristic_enable_notifications_succeeded(self, characteristic):
         super().characteristic_enable_notifications_succeeded(characteristic)
@@ -435,6 +359,7 @@ class PowerDevice():
         self._alias = alias
         self._name = name
         self._device_id = 0
+        self.datalogger = None
         self._mcurrent = {
             'val': 0,
             'min': 0,
@@ -493,10 +418,12 @@ class PowerDevice():
     def name(self):
         return self._name
 
-
     @property
     def alias(self):
         return self._alias
+
+    def add_datalogger(self, datalogger):
+        self.datalogger = datalogger
 
     @property
     def mcurrent(self):
@@ -557,6 +484,16 @@ class PowerDevice():
         self.dkelvin = (value * 10) + 2731
 
     @property
+    def temperature_fahrenheit(self):
+        return round(((self.temperature * 0.18) - 459.67), 1)
+    @temperature_fahrenheit.setter
+    def temperature_fahrenheit(self, value):
+        self.dkelvin = (value + 459.67) * (5/9) * 10
+
+
+
+
+    @property
     def mcapacity(self):
         return self._mcapacity['val']
     @mcapacity.setter
@@ -605,11 +542,6 @@ class PowerDevice():
                 out = "{} {} == {},".format(out, var, self.__dict__[var])
         logging.debug(out)
 
-    def value_changed(self, var, was, val):
-        if float(was) != float(val):
-            logging.debug("Value of {} changed from {} to {}".format(var, was, val))
-            self.dumpall()
-
     
     def validate(self, var, val):
         definition = getattr(self, var)
@@ -629,6 +561,9 @@ class PowerDevice():
         logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
         self.__dict__[var]['val'] = val
         
+    def mqtt_poller(self):
+        return []
+
 
 
 class RegulatorDevice(PowerDevice):
@@ -677,8 +612,14 @@ class RegulatorDevice(PowerDevice):
             'max': 48000,
             'maxdiff': 12000
         }
-        self._power_switch_status = 0
-        self.solarLinkUtil = SolarLinkUtil(self.alias, self)  
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 15000,
+            'maxdiff': 15000
+        }
+        self._power_switch_state = 0
+        self.deviceUtil = SolarLinkUtil(self.alias, self)  
 
     @property
     def device_id(self):
@@ -687,14 +628,6 @@ class RegulatorDevice(PowerDevice):
     @property
     def send_ack(self):
         return self._send_ack
-
-    @property
-    def power_switch_status(self):
-        return self._power_switch_status
-
-    @power_switch_status.setter
-    def power_switch_status(self, value):
-        self._power_switch_status = value
 
 
     # Voltage
@@ -789,14 +722,58 @@ class RegulatorDevice(PowerDevice):
         self.charge_mpower = value * 1000
 
 
+    @property
+    def power_switch_state(self):
+        return self._power_switch_state
 
+    @power_switch_state.setter
+    def power_switch_state(self, value):
+        if value != self._power_switch_state:
+            self._power_switch_state = value
+            try:
+                self.datalogger.log(self.logger_name, 'power_switch_state', self.power_switch_state)
+            except:
+                pass
+
+
+    def mqtt_poller(self):
+        logging.debug("Running MQTT-poller")
+        mqtt_sets = []
+        ret = []
+        try:
+            mqtt_sets = self.datalogger.mqtt.sets
+            self.datalogger.mqtt.sets = []
+        except Exception as e:
+            pass
+        for msg in mqtt_sets:
+            logging.debug("MQTT-msg: {} -> {}".format(msg[0], msg[1]))
+            topic = msg[0]
+            message = msg[1]
+            if topic == 'leveld/regulator/power_switch_state/set':
+                logging.info("Switching Power Switch to {}".format(message))
+                if int(message) == 0:
+                    ret.append('cmdPowerSwitchOff')
+                    self.power_switch_state = 0
+                if int(message) == 1:
+                    ret.append('cmdPowerSwitchOn')
+                    self.power_switch_state = 1
+        return ret
+            
+            
 
 
     def parse_notification(self, value):
-        if self.solarLinkUtil.pollerUpdate(self.poll_register, value):
+        if self.deviceUtil.pollerUpdate(self.poll_register, value):
+            # logging.debug("parse_notification {} success".format(self.poll_register))
+            if self.poll_register == 'ParamSettingData' and len(self.deviceUtil.param_data) < 33:
+                pass
+            else:
+                self.poll_register = None
             return True
         else:
-            logging.warning("Error during parse_notification")
+            logging.warning("Error during parse_notification {}".format(self.poll_register))
+            self.poll_register = None
+            return False
 
 
 
@@ -826,7 +803,7 @@ class BatteryDevice(PowerDevice):
                 'max': 4000,
                 'maxdiff': 500
             }
-        self.smartPowerUtil = SmartPowerUtil(self.alias, self)  
+        self.deviceUtil = SmartPowerUtil(self.alias, self)  
 
     @property
     def device_id(self):
@@ -924,7 +901,7 @@ class BatteryDevice(PowerDevice):
             logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
 
     def parse_notification(self, value):
-        if self.smartPowerUtil.broadcastUpdate(value):
+        if self.deviceUtil.broadcastUpdate(value):
             return True
         return False
 
