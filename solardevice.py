@@ -293,13 +293,13 @@ class PowerDevice():
             'val': 0,
             'min': 0,
             'max': 30000,
-            'maxdiff': 2000
+            'maxdiff': 10000
         }
         self._mpower = {
             'val': 0,
             'min': 0,
             'max': 200000,
-            'maxdiff': 50000
+            'maxdiff': 100000
         }
         self._dsoc = {
             'val': 0,
@@ -519,13 +519,13 @@ class RegulatorDevice(PowerDevice):
             'val': 0,
             'min': 0,
             'max': 30000,
-            'maxdiff': 2000
+            'maxdiff': 10000
         }
         self._input_mpower = {
             'val': 0,
             'min': 0,
             'max': 200000,
-            'maxdiff': 50000
+            'maxdiff': 100000
         }
         self._input_mvoltage = {
             'val': 0,
@@ -537,13 +537,13 @@ class RegulatorDevice(PowerDevice):
             'val': 0,
             'min': 0,
             'max': 30000,
-            'maxdiff': 2000
+            'maxdiff': 10000
         }
         self._charge_mpower = {
             'val': 0,
             'min': 0,
             'max': 200000,
-            'maxdiff': 50000
+            'maxdiff': 100000
         }
         self._charge_mvoltage = {
             'val': 0,
