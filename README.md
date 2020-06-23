@@ -95,6 +95,13 @@ The data will be posted as JSON to a given URL as an object:
 {"device": "battery_1", "capacity": 105.1, "ts": "2020-04-19 21:41:26"}
 ```
 
+This allows you to remotely monitor the data from your installation:
+
+<img src="https://github.com/Olen/solar-monitor/blob/master/img/SRNE-Screenshot.png?raw=true">
+
+<img src="https://github.com/Olen/solar-monitor/blob/master/img/Battery-Screenshot.png?raw=true">
+
+
 
 # Credits
 A huge thanks to Pramod P K https://github.com/prapkengr/ for doing reverse engineering and decompiling of the Android Apps to figure out the protocols used.
