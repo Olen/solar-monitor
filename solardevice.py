@@ -19,7 +19,7 @@ import logging
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
 from datalogger import DataLogger
-from mertsunutil import MeritsunUtil
+from meritsunutil import MeritsunUtil
 from solarlinkutil import SolarLinkUtil
 
 
@@ -51,11 +51,11 @@ class SolarDevice(blegatt.Device):
         self.write_buffer = []
 
         if "battery" in self.logger_name:
-            self.entities = BatteryDevice(name=self.logger_name, alias=self.alias)
+            self.entities = BatteryDevice(parent=self)
         elif "regulator" in self.logger_name:
-            self.entities = RegulatorDevice(name=self.logger_name, alias=self.alias)
+            self.entities = RegulatorDevice(parent=self)
         else:
-            self.entities = PowerDevice(name=self.logger_name, alias=self.alias)
+            self.entities = PowerDevice(parent=self)
 
 
     def add_services(self, services_list, notify_list, services_write_list, write_list):
@@ -126,85 +126,15 @@ class SolarDevice(blegatt.Device):
         if self.entities.need_polling:
             t = threading.Thread(target=self.thread_poll)
             t.daemon = True 
-            t.name = "Poller-thread"
-            logging.debug("Starting new thread")
+            t.name = "Poller-thread {}".format(self.logger_name)
             t.start()
 
     def thread_poll(self):
         # Implement polling in a separate thread to be able to
         # sleep without blocking notifications
+        logging.debug("Starting new thread {}".format(threading.currentThread().name))
+        self.entities.device_poller()
 
-        c = 0
-        while True:
-            logging.debug("Looping thread {} {}".format(threading.currentThread().name, c))
-            c = c + 1
-            if c == 1:
-                self.async_poll_data('BatteryParamInfo')
-            if c == 3:
-                self.async_poll_data('SolarPanelInfo')
-            # if c == 5:
-            #     self.async_poll_data('SolarPanelAndBatteryState')
-            # if c == 7:
-            #     self.async_poll_data('ParamSettingData')
-
-            cmds = self.entities.mqtt_poller()
-            if len(cmds) > 0: 
-                for cmd in cmds:
-                    if cmd == 'cmdPowerSwitchOff':
-                        self.entities.power_switch_state = 0
-                        self.async_poll_data('RegulatorPowerOff')
-                    if cmd == 'cmdPowerSwitchOn':
-                        self.entities.power_switch_state = 1
-                        self.async_poll_data('RegulatorPowerOn')
-                    logging.info("CMD: {}".format(cmd))
-                    time.sleep(1)
-                # Refresh data after cmd
-                self.async_poll_data('SolarPanelInfo')
-                time.sleep(1)
-                self.async_poll_data('BatteryParamInfo')
-
-            time.sleep(1)
-            if c == 10:
-                c = 0
-
-
-    def async_poll_data(self, cmd):
-        data = None
-        function = self.entities.deviceUtil.function_READ
-        if cmd == 'SolarPanelAndBatteryState':
-            regAddr = self.entities.deviceUtil.SolarPanelAndBatteryState.REG_ADDR
-            readWrd = self.entities.deviceUtil.SolarPanelAndBatteryState.READ_WORD
-        elif cmd == 'BatteryParamInfo':
-            regAddr = self.entities.deviceUtil.BatteryParamInfo.REG_ADDR
-            readWrd = self.entities.deviceUtil.BatteryParamInfo.READ_WORD
-        elif cmd == 'SolarPanelInfo':
-            regAddr = self.entities.deviceUtil.SolarPanelInfo.REG_ADDR
-            readWrd = self.entities.deviceUtil.SolarPanelInfo.READ_WORD
-        elif cmd == 'ParamSettingData':
-            regAddr = self.entities.deviceUtil.ParamSettingData.REG_ADDR
-            readWrd = self.entities.deviceUtil.ParamSettingData.READ_WORD
-        elif cmd == 'RegulatorPowerOn':
-            regAddr = self.entities.deviceUtil.RegulatorPower.REG_ADDR
-            readWrd = self.entities.deviceUtil.RegulatorPower.on
-            function = self.entities.deviceUtil.function_WRITE
-        elif cmd == 'RegulatorPowerOff':
-            regAddr = self.entities.deviceUtil.RegulatorPower.REG_ADDR
-            readWrd = self.entities.deviceUtil.RegulatorPower.off
-            function = self.entities.deviceUtil.function_WRITE
-
-        data = self.entities.deviceUtil.buildRequest(function, regAddr, readWrd)
-
-        self.entities.poll_register = cmd
-        waitcount = 0
-        while self.writing:
-            logging.debug("Waiting for writing: {} {}".format(self.writing, waitcount))
-            time.sleep(1)
-            waitcount = waitcount + 1
-            if waitcount > 5:
-                return False
-        logging.debug("Writing poll")
-        self.characteristic_write_value(data)
-        return True
 
 
 
@@ -217,8 +147,7 @@ class SolarDevice(blegatt.Device):
 
         if self.entities.send_ack:
             time.sleep(.5)
-            msg = "main recv da ta[{0:02x}] [".format(value[0])
-            self.characteristic_write_value(bytearray(msg, "ascii"))
+            self.entities.ack(value)
 
         if self.entities.parse_notification(value):
             # We received some new data. Lets push it to the datalogger
@@ -354,9 +283,10 @@ class PowerDevice():
     Soc is stored as /10 %
     Most setters will validate the input to guard against false Zero-values
     '''
-    def __init__(self, alias=None, name=None):
-        self._alias = alias
-        self._name = name
+    def __init__(self, parent=None):
+        self._parent = parent
+        self._alias = parent.alias
+        self._name = parent.logger_name
         self._device_id = 0
         self.datalogger = None
         self._mcurrent = {
@@ -412,6 +342,10 @@ class PowerDevice():
     @poll_register.setter
     def poll_register(self, value):
         self._poll_register = value
+
+    @property
+    def parent(self):
+        return self._parent
 
     @property
     def name(self):
@@ -560,6 +494,12 @@ class PowerDevice():
         logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
         self.__dict__[var]['val'] = val
         
+    def device_poller(self):
+        pass
+
+    def ack(self):
+        pass
+
     def mqtt_poller(self):
         return []
 
@@ -570,8 +510,8 @@ class RegulatorDevice(PowerDevice):
     Special class for Regulator-devices.  
     Extending PowerDevice class with more properties specifically for the regulators
     '''
-    def __init__(self, alias=None, name=None):
-        super().__init__(alias=alias, name=name)
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
         self._device_id = 255
         self._send_ack = True
         self._need_poll = True
@@ -734,6 +674,39 @@ class RegulatorDevice(PowerDevice):
             except:
                 pass
 
+    def ack(self, value):
+        data = self.deviceUtil.ackData(value)
+        self.parent.characteristic_write_value(data)
+
+    def device_poller(self):
+        while True:
+            logging.debug("Looping thread {}".format(threading.currentThread().name))
+            data = self.deviceUtil.pollData()
+            if data:
+                self.parent.characteristic_write_value(data)
+
+            cmds = self.mqtt_poller()
+            if len(cmds) > 0: 
+                for cmd in cmds:
+                    time.sleep(0.5)
+                    if cmd == 'cmdPowerSwitchOff':
+                        self.power_switch_state = 0
+                        data = self.deviceUtil.pollData('RegulatorPowerOff')
+                        self.parent.characteristic_write_value(data)
+                    if cmd == 'cmdPowerSwitchOn':
+                        self.power_switch_state = 1
+                        data = self.deviceUtil.pollData('RegulatorPowerOn')
+                        self.parent.characteristic_write_value(data)
+                    time.sleep(0.5)
+                # Refresh data after cmd
+                data = self.deviceUtil.pollData('SolarPanelInfo')
+                self.parent.characteristic_write_value(data)
+                time.sleep(0.5)
+                data = self.deviceUtil.pollData('BatteryParamInfo')
+                self.parent.characteristic_write_value(data)
+
+            time.sleep(1)
+
 
     def mqtt_poller(self):
         logging.debug("Running MQTT-poller")
@@ -782,8 +755,8 @@ class BatteryDevice(PowerDevice):
     Extending PowerDevice class with more properties specifically for the batteries
     '''
 
-    def __init__(self, alias=None, name=None):
-        super().__init__(alias=alias, name=name)
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
         self._health = None
         self._state = None
         self._charge_cycles = {
