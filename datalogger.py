@@ -40,7 +40,7 @@ class DataLoggerMqtt():
             self.create_sensor(device, var)
             self.create_listener(device, var)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
-        ret = self.client.publish(topic, val)
+        ret = self.client.publish(topic, val, retain=True)
 
 
     def create_sensor(self, device, var):
