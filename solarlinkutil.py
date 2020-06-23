@@ -51,14 +51,6 @@ class SolarLinkUtil():
             logging.warning("Unknown packet received: {}".format(value))
             return False
 
-        if register == 'BatteryParamInfo':
-            self.updateBatteryParamInfo(value)
-        if register == 'SolarPanelAndBatteryState':
-            self.updateSolarPanelAndBatteryState(value)
-        if register == 'SolarPanelInfo':
-            self.updateSolarPanelInfo(value)
-        if register == 'ParamSettingData':
-            self.updateParamSettingData(value)
         return True
 
 
