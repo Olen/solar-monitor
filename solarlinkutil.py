@@ -18,13 +18,14 @@ class SolarLinkUtil():
         self.param_data = []
         self.poll_loop_count = 0
         self.poll_data = None
+        self.poll_register = None
 
     def pollerUpdate(self, register, value):
         '''
         Fortunately we read a different number of bytes from each register, so we can 
         abuse the "length" field (byte #3 in the response) as an "id"
         '''
-        logging.debug("REG: {} VAL: {}".format(register, value))
+        logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
         if not self.Validate(value):
             logging.warning("PollerUpdate - Invalid data: {}".format(value))
             return False
