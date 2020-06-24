@@ -173,7 +173,10 @@ class MeritsunUtil():
         self.PowerDevice.msg = message
         if self.DeviceType == '12V100Ah-027':
             self.PowerDevice.mvoltage = self.getValue(message, 0, 7)
-            self.PowerDevice.mcurrent = self.getValue(message, 8, 15)
+            mcurrent = self.getValue(message, 8, 15)
+            if mcurrent > 2147483647:
+                mcurrent = mcurrent - 4294967295
+            self.PowerDevice.mcurrent = mcurrent
             self.PowerDevice.mcapacity = self.getValue(message, 16, 23)
             self.PowerDevice.charge_cycles = self.getValue(message, 24, 27)
             self.PowerDevice.soc = self.getValue(message, 28, 31)
