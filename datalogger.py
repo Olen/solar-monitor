@@ -51,7 +51,7 @@ class DataLoggerMqtt():
             "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
             "state_topic": topic
         }
-        ret = self.client.publish(ha_topic, json.dumps(val))
+        ret = self.client.publish(ha_topic, json.dumps(val), retain=True)
         self.sensors.append(topic)
 
 
