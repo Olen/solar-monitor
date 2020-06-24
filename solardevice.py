@@ -414,14 +414,14 @@ class PowerDevice():
         return round((self.temperature - 2731) * 0.1, 1)
     @temperature_celsius.setter
     def temperature_celsius(self, value):
-        self.dkelvin = (value * 10) + 2731
+        self.temperature = (value * 10) + 2731
 
     @property
     def temperature_fahrenheit(self):
         return round(((self.temperature * 0.18) - 459.67), 1)
     @temperature_fahrenheit.setter
     def temperature_fahrenheit(self, value):
-        self.dkelvin = (value + 459.67) * (5/9) * 10
+        self.temperature = (value + 459.67) * (5/9) * 10
 
 
 
