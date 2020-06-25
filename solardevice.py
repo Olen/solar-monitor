@@ -53,12 +53,12 @@ class SolarDevice(blegatt.Device):
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice(parent=self)
-            self.entities.need_poll = False
+            self.entities.need_polling = False
             self.entities.send_ack = False
         elif "regulator" in self.logger_name:
             self.entities = RegulatorDevice(parent=self)
             self.entities.device_id = 255
-            self.entities.need_poll = True
+            self.entities.need_polling = True
             self.entities.send_ack = True
         else:
             self.entities = PowerDevice(parent=self)
@@ -226,7 +226,7 @@ class PowerDevice():
     '''
     def __init__(self, parent=None):
         self._parent = parent
-        self._alias = parent.alias
+        self._alias = parent.alias()
         self._name = parent.logger_name
         self._device_id = 0
         self._send_ack = False
@@ -314,7 +314,7 @@ class PowerDevice():
 
     @property
     def alias(self):
-        return self._alias()
+        return self._alias
 
     def add_datalogger(self, datalogger):
         self.datalogger = datalogger
@@ -485,7 +485,7 @@ class InverterDevice(PowerDevice):
             'maxdiff': 250000
         }
         self._power_switch_state = 0
-        self.deviceUtil = VictronUtil(self.alias(), self)  
+        self.deviceUtil = VictronUtil(self.alias, self)  
 
 
 class RectifierDevice(PowerDevice):
@@ -508,7 +508,7 @@ class RectifierDevice(PowerDevice):
             'maxdiff': 50000
         }
         self._power_switch_state = 0
-        self.deviceUtil = VictronutilUtil(self.alias(), self)  
+        self.deviceUtil = VictronutilUtil(self.alias, self)  
 
 
 class RegulatorDevice(PowerDevice):
@@ -561,7 +561,7 @@ class RegulatorDevice(PowerDevice):
             'maxdiff': 15000
         }
         self._power_switch_state = 0
-        self.deviceUtil = SolarLinkUtil(self.alias(), self)  
+        self.deviceUtil = SolarLinkUtil(self.alias, self)  
 
 
     # Voltage
@@ -754,6 +754,12 @@ class BatteryDevice(PowerDevice):
         super().__init__(parent=parent)
         self._health = None
         self._state = None
+        self._mcurrent = {
+            'val': 0,
+            'min': -30000,
+            'max': 30000,
+            'maxdiff': 10000
+        }
         self._charge_cycles = {
             'val': 0,
             'min': 0,
@@ -769,15 +775,11 @@ class BatteryDevice(PowerDevice):
                 'max': 4000,
                 'maxdiff': 500
             }
-        self.deviceUtil = MeritsunUtil(self.alias(), self)  
+        self.deviceUtil = MeritsunUtil(self.alias, self)  
 
     @property
     def device_id(self):
         return self._device_id
-
-    @property
-    def send_ack(self):
-        return self._send_ack
 
     @property
     def charge_cycles(self):

@@ -3,6 +3,7 @@ import logging
 import json
 import requests
 import paho.mqtt.client as paho
+import socket
 
 
 
@@ -13,7 +14,7 @@ class DataLoggerMqtt():
         if prefix == None:
             prefix = "solar-monitor"
         self.broker = broker
-        self.client = paho.Client(prefix)                                   # create client object
+        self.client = paho.Client("{}".format(socket.gethostname()))        #  create client object
         self.client.on_publish = self.on_publish                            # assign function to callback
         self.client.on_message = self.on_message                            # attach function to callback
         self.client.on_subscribe = self.on_subscribe                        # attach function to callback
