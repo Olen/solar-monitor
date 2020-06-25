@@ -121,11 +121,11 @@ def main():
     # device.connect()
     devices = {}
     for item in config.items("devices"):
-        devices[item[1]] = item[0]
+        devices[item[1].lower()] = item[0].lower()
     for dev in device_manager.devices():
         # if dev.mac_address != "d8:64:8c:66:f4:d4" and dev.mac_address != "7c:01:0a:41:ca:f9":
         # if dev.mac_address != "d8:64:8c:66:f4:d4":
-        if dev.mac_address in devices:
+        if dev.mac_address.lower() in devices:
             device = SolarDevice(mac_address=dev.mac_address, manager=device_manager, logger_name=devices[dev.mac_address], reconnect=config.getboolean('monitor', 'reconnect'))
             device.add_services(dev_services_list, dev_notify_list, dev_services_write_list, dev_write_list)
             device.add_datalogger(datalogger)
