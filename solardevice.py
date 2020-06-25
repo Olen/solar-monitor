@@ -67,7 +67,6 @@ class SolarDevice(blegatt.Device):
         self.datalogger = datalogger
         self.entities.add_datalogger(datalogger)
 
-    @property
     def alias(self):
         return super().alias().strip()
 
@@ -77,7 +76,7 @@ class SolarDevice(blegatt.Device):
 
     def connect_succeeded(self):
         super().connect_succeeded()
-        logging.info("[{}] Connected to {}".format(self.logger_name, self.alias))
+        logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
 
     def connect_failed(self, error):
         super().connect_failed(error)

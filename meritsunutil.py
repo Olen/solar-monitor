@@ -171,22 +171,22 @@ class MeritsunUtil():
         # logging.info("Parsing data from a {}".format(self.DeviceType))
 
         self.PowerDevice.msg = message
-        if self.DeviceType == '12V100Ah-027':
-            self.PowerDevice.mvoltage = self.getValue(message, 0, 7)
-            mcurrent = self.getValue(message, 8, 15)
-            if mcurrent > 2147483647:
-                mcurrent = mcurrent - 4294967295
-            self.PowerDevice.mcurrent = mcurrent
-            self.PowerDevice.mcapacity = self.getValue(message, 16, 23)
-            self.PowerDevice.charge_cycles = self.getValue(message, 24, 27)
-            self.PowerDevice.soc = self.getValue(message, 28, 31)
-            self.PowerDevice.temperature = self.getValue(message, 32, 35)
-            self.PowerDevice.status = self.getValue(message, 36, 37)
-            self.PowerDevice.afestatus = self.getValue(message, 40, 41)
-            i = 0
-            while i < 16:
-                self.PowerDevice.cell_mvoltage = (i + 1, self.getValue(message, (i * 4) + 44, (i * 4) + 47))
-                i = i + 1
+        # if self.DeviceType == '12V100Ah-027':
+        self.PowerDevice.mvoltage = self.getValue(message, 0, 7)
+        mcurrent = self.getValue(message, 8, 15)
+        if mcurrent > 2147483647:
+            mcurrent = mcurrent - 4294967295
+        self.PowerDevice.mcurrent = mcurrent
+        self.PowerDevice.mcapacity = self.getValue(message, 16, 23)
+        self.PowerDevice.charge_cycles = self.getValue(message, 24, 27)
+        self.PowerDevice.soc = self.getValue(message, 28, 31)
+        self.PowerDevice.temperature = self.getValue(message, 32, 35)
+        self.PowerDevice.status = self.getValue(message, 36, 37)
+        self.PowerDevice.afestatus = self.getValue(message, 40, 41)
+        i = 0
+        while i < 16:
+            self.PowerDevice.cell_mvoltage = (i + 1, self.getValue(message, (i * 4) + 44, (i * 4) + 47))
+            i = i + 1
 
         return True
 

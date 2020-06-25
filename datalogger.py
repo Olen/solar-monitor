@@ -11,7 +11,7 @@ class DataLoggerMqtt():
     def __init__(self, broker, port):
         logging.debug("Creating new MQTT-logger")
         self.broker = broker
-        self.client = paho.Client("home-assistant")                         # create client object
+        self.client = paho.Client("ola-jobb")                         # create client object
         self.client.on_publish = self.on_publish                            # assign function to callback
         self.client.on_message = self.on_message                            # attach function to callback
         self.client.on_subscribe = self.on_subscribe                        # attach function to callback
