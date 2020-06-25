@@ -8,10 +8,12 @@ import paho.mqtt.client as paho
 
 
 class DataLoggerMqtt():
-    def __init__(self, broker, port):
+    def __init__(self, broker, port, prefix=None):
         logging.debug("Creating new MQTT-logger")
+        if prefix == None:
+            prefix = "solar-monitor"
         self.broker = broker
-        self.client = paho.Client("ola-jobb")                         # create client object
+        self.client = paho.Client(prefix)                                   # create client object
         self.client.on_publish = self.on_publish                            # assign function to callback
         self.client.on_message = self.on_message                            # attach function to callback
         self.client.on_subscribe = self.on_subscribe                        # attach function to callback
@@ -20,9 +22,11 @@ class DataLoggerMqtt():
         self.client.connect(broker, port)                                   # establish connection
         self.client.loop_start()                                            # start the loop
 
-        self._prefix = ""
         self.sensors = []
         self.sets = []
+        if not prefix.endswith("/"):
+            prefix = prefix + "/"
+        self._prefix = prefix
 
     @property
     def prefix(self):
@@ -98,8 +102,7 @@ class DataLogger():
             self.url = config.get('datalogger', 'url')
             self.token = config.get('datalogger', 'token')
         if config.get('mqtt', 'broker', fallback=None):
-            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883)
-            self.mqtt.prefix = config.get('mqtt', 'prefix') 
+            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'))
         self.logdata = {}
 
        

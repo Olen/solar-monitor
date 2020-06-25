@@ -116,7 +116,7 @@ def main():
     time.sleep(15)
     device_manager.stop_discovery()
     logging.info("Found {} BLE-devices".format(len(device_manager.devices())))
-    logging.info("Trying to connect...")
+    # logging.info("Trying to connect...")
     # device = ConnectAnyDevice(mac_address=args.connect, manager=device_manager)
     # device.connect()
     devices = {}
@@ -124,7 +124,7 @@ def main():
         devices[item[1].lower()] = item[0].lower()
     for dev in device_manager.devices():
 
-        logging.info("Looking at {}...".format(dev.mac_address))
+        # logging.info("Looking at {}...".format(dev.mac_address))
         # if dev.mac_address != "d8:64:8c:66:f4:d4" and dev.mac_address != "7c:01:0a:41:ca:f9":
         # if dev.mac_address != "d8:64:8c:66:f4:d4":
         if dev.mac_address.lower() in devices:

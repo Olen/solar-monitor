@@ -21,6 +21,7 @@ import logging
 from datalogger import DataLogger
 from meritsunutil import MeritsunUtil
 from solarlinkutil import SolarLinkUtil
+from victronutil import VictronUtil
 
 
 
@@ -52,8 +53,13 @@ class SolarDevice(blegatt.Device):
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice(parent=self)
+            self.entities.need_poll = False
+            self.entities.send_ack = False
         elif "regulator" in self.logger_name:
             self.entities = RegulatorDevice(parent=self)
+            self.entities.device_id = 255
+            self.entities.need_poll = True
+            self.entities.send_ack = True
         else:
             self.entities = PowerDevice(parent=self)
 
@@ -90,7 +96,7 @@ class SolarDevice(blegatt.Device):
 
     def services_resolved(self):
         super().services_resolved()
-        logging.info("[{}] Connected to {}".format(self.logger_name, self.alias))
+        logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
         device_notification_service = None
         device_write_service = None
@@ -174,70 +180,6 @@ class SolarDevice(blegatt.Device):
                         self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
             except:
                 pass
-            '''
-            try:
-                self.datalogger.log(self.logger_name, 'current', self.entities.current)
-            except Exception as e:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'input_current', self.entities.input_current)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'charge_current', self.entities.charge_current)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'voltage', self.entities.voltage)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'input_voltage', self.entities.input_voltage)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'charge_voltage', self.entities.charge_voltage)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'power', self.entities.power)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'input_power', self.entities.input_power)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'charge_power', self.entities.charge_power)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'soc', self.entities.soc)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'capacity', self.entities.capacity)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'charge_cycles', self.entities.charge_cycles)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'state', self.entities.state)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'power_switch_state', self.entities.power_switch_state)
-            except:
-                pass
-            try:
-                self.datalogger.log(self.logger_name, 'health', self.entities.health)
-            except:
-                pass
-
-            # logging.info("Cell voltage: {}".format(self.entities.cell_voltage))
-            '''
 
     def characteristic_enable_notifications_succeeded(self, characteristic):
         super().characteristic_enable_notifications_succeeded(characteristic)
@@ -287,7 +229,9 @@ class PowerDevice():
         self._alias = parent.alias
         self._name = parent.logger_name
         self._device_id = 0
-        self.datalogger = None
+        self._send_ack = False
+        self._need_poll = False
+        self._poll_register = None
         self._mcurrent = {
             'val': 0,
             'min': 0,
@@ -326,13 +270,30 @@ class PowerDevice():
         }
         self._msg = None
         self._status = None
-        self._poll_register = None
-        self._need_poll = False
-        self._send_ack = False
+        self.datalogger = None
 
     @property
     def need_polling(self):
         return self._need_poll
+
+    @need_polling.setter
+    def need_polling(self, value):
+        self._need_poll = value
+
+    @property
+    def device_id(self):
+        return self._device_id
+    @device_id.setter
+    def device_id(self, value):
+        self._device_id = int(value)
+
+    @property
+    def send_ack(self):
+        return self._send_ack
+    @send_ack.setter
+    def send_ack(self, value):
+        self._send_ack = value
+
 
     @property
     def poll_register(self):
@@ -352,7 +313,7 @@ class PowerDevice():
 
     @property
     def alias(self):
-        return self._alias
+        return self._alias()
 
     def add_datalogger(self, datalogger):
         self.datalogger = datalogger
@@ -503,6 +464,51 @@ class PowerDevice():
         return []
 
 
+class InverterDevice(PowerDevice):
+    '''
+    Special class for Regulator-devices.  (DC-AC)
+    Extending PowerDevice class with more properties specifically for the regulators
+    '''
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self._input_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 50000,
+            'maxdiff': 50000
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 250000,
+            'maxdiff': 250000
+        }
+        self._power_switch_state = 0
+        self.deviceUtil = VictronUtil(self.alias(), self)  
+
+
+class RectifierDevice(PowerDevice):
+    '''
+    Special class for Rectifier-devices  (AC-DC).  
+    Extending PowerDevice class with more properties specifically for the regulators
+    '''
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self._input_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 250000,
+            'maxdiff': 250000
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 50000,
+            'maxdiff': 50000
+        }
+        self._power_switch_state = 0
+        self.deviceUtil = VictronutilUtil(self.alias(), self)  
+
 
 class RegulatorDevice(PowerDevice):
     '''
@@ -511,9 +517,6 @@ class RegulatorDevice(PowerDevice):
     '''
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self._device_id = 255
-        self._send_ack = True
-        self._need_poll = True
         self._input_mcurrent = {
             'val': 0,
             'min': 0,
@@ -557,15 +560,7 @@ class RegulatorDevice(PowerDevice):
             'maxdiff': 15000
         }
         self._power_switch_state = 0
-        self.deviceUtil = SolarLinkUtil(self.alias, self)  
-
-    @property
-    def device_id(self):
-        return self._device_id
-
-    @property
-    def send_ack(self):
-        return self._send_ack
+        self.deviceUtil = SolarLinkUtil(self.alias(), self)  
 
 
     # Voltage
@@ -774,7 +769,7 @@ class BatteryDevice(PowerDevice):
                 'max': 4000,
                 'maxdiff': 500
             }
-        self.deviceUtil = MeritsunUtil(self.alias, self)  
+        self.deviceUtil = MeritsunUtil(self.alias(), self)  
 
     @property
     def device_id(self):
