@@ -312,7 +312,6 @@ class PowerDevice():
     def name(self):
         return self._name
 
-    @property
     def alias(self):
         return self._alias
 
