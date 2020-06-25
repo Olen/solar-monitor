@@ -53,8 +53,6 @@ class SolarDevice(blegatt.Device):
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice(parent=self)
-            self.entities.need_polling = False
-            self.entities.send_ack = False
         elif "regulator" in self.logger_name:
             self.entities = RegulatorDevice(parent=self)
             self.entities.device_id = 255
@@ -226,11 +224,9 @@ class PowerDevice():
     '''
     def __init__(self, parent=None):
         self._parent = parent
-        self._alias = parent.alias
-        self._name = parent.logger_name
         self._device_id = 0
         self._send_ack = False
-        self._need_poll = False
+        self._need_polling = False
         self._poll_register = None
         self._cell_mvoltage = {}
         self._mcurrent = {
@@ -275,11 +271,13 @@ class PowerDevice():
 
     @property
     def need_polling(self):
-        return self._need_poll
+        return self._need_polling
 
     @need_polling.setter
     def need_polling(self, value):
-        self._need_poll = value
+        if value == True:
+            loggig.info("Enabling BLE-polling")
+        self._need_polling = value
 
     @property
     def device_id(self):
@@ -310,10 +308,10 @@ class PowerDevice():
 
     @property
     def name(self):
-        return self._name
+        return self.parent.logger_name
 
     def alias(self):
-        return self._alias()
+        return self.parent.alias()
 
     def add_datalogger(self, datalogger):
         self.datalogger = datalogger
