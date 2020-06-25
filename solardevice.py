@@ -176,8 +176,8 @@ class SolarDevice(blegatt.Device):
 
             try:
                 for cell in self.entities.cell_mvoltage:
-                    if self.entities.cell_mvoltage[cell] > 0:
-                        self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell])
+                    if self.entities.cell_mvoltage[cell]['val'] > 0:
+                        self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell]['val'])
             except:
                 pass
 
@@ -232,6 +232,7 @@ class PowerDevice():
         self._send_ack = False
         self._need_poll = False
         self._poll_register = None
+        self._cell_mvoltage = {}
         self._mcurrent = {
             'val': 0,
             'min': 0,
@@ -759,7 +760,6 @@ class BatteryDevice(PowerDevice):
             'max': 10000,
             'maxdiff': 1
         }
-        self._cell_mvoltage = {}
         i = 0
         while i < 16:
             i = i + 1
