@@ -53,12 +53,12 @@ class SolarDevice(blegatt.Device):
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice(parent=self)
-            self.entities.need_poll = False
+            self.entities.need_polling = False
             self.entities.send_ack = False
         elif "regulator" in self.logger_name:
             self.entities = RegulatorDevice(parent=self)
             self.entities.device_id = 255
-            self.entities.need_poll = True
+            self.entities.need_polling = True
             self.entities.send_ack = True
         else:
             self.entities = PowerDevice(parent=self)
@@ -312,7 +312,6 @@ class PowerDevice():
     def name(self):
         return self._name
 
-    @property
     def alias(self):
         return self._alias()
 
@@ -774,10 +773,6 @@ class BatteryDevice(PowerDevice):
     @property
     def device_id(self):
         return self._device_id
-
-    @property
-    def send_ack(self):
-        return self._send_ack
 
     @property
     def charge_cycles(self):
