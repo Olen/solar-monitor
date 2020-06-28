@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import time
 import logging
 import json
 import requests
@@ -41,11 +42,29 @@ class DataLoggerMqtt():
     def publish(self, device, var, val):
         topic = "{}{}/{}/state".format(self.prefix, device, var)
         if topic not in self.sensors:
-            self.create_sensor(device, var)
-            self.create_listener(device, var)
+            if "power_switch" in var:
+                self.create_switch(device, var)
+                self.create_listener(device, var)
+            else:
+                self.create_sensor(device, var)
+            self.sensors.append(topic)
+            time.sleep(0.5)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         ret = self.client.publish(topic, val, retain=True)
 
+    def create_switch(self, device, var):
+        topic = "{}{}/{}/state".format(self.prefix, device, var)
+        logging.debug("Creating MQTT-switch {}".format(topic))
+        ha_topic = "homeassistant/switch/{}/{}/config".format(device, var)
+        val = {
+            "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
+            "unique_id": "{}_{}_{}".format(self.prefix[:-1], device, var),
+            "state_topic": topic,
+            "command_topic": "{}{}/{}/set".format(self.prefix, device, var)
+            "force_update": True,
+            "payload_on": 1,
+            "payload_off": 0,
+        }
 
     def create_sensor(self, device, var):
         topic = "{}{}/{}/state".format(self.prefix, device, var)
@@ -53,10 +72,20 @@ class DataLoggerMqtt():
         ha_topic = "homeassistant/sensor/{}/{}/config".format(device, var)
         val = {
             "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
-            "state_topic": topic
+            "unique_id": "{}_{}_{}".format(self.prefix[:-1], device, var),
+            "state_topic": topic,
+            "force_update": True,
         }
+        if var == "temperature":
+            val['device_class'] = "temperature"
+        if var == "power":
+            val['device_class'] = "power"
+        if var == "soc":
+            val['device_class'] = "battery"
+
+
+
         ret = self.client.publish(ha_topic, json.dumps(val), retain=True)
-        self.sensors.append(topic)
 
 
     def create_listener(self, device, var):
