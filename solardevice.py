@@ -461,6 +461,11 @@ class PowerDevice():
     def mqtt_poller(self):
         return []
 
+    def parse_notification(self, value):
+        if self.deviceUtil.notificationUpdate(value):
+            return True
+        return False
+
 
 class InverterDevice(PowerDevice):
     '''
@@ -659,6 +664,10 @@ class RegulatorDevice(PowerDevice):
 
     @power_switch_state.setter
     def power_switch_state(self, value):
+        if value.lower() == "on":
+            value = 1
+        if value.lower() == "off":
+            value = 0
         if value != self._power_switch_state:
             self._power_switch_state = value
             try:
@@ -727,7 +736,7 @@ class RegulatorDevice(PowerDevice):
 
 
     def parse_notification(self, value):
-        if self.deviceUtil.pollerUpdate(self.poll_register, value):
+        if self.deviceUtil.notificationUpdate(self.poll_register, value):
             # logging.debug("parse_notification {} success".format(self.poll_register))
             if self.poll_register == 'ParamSettingData' and len(self.deviceUtil.param_data) < 33:
                 pass
@@ -858,14 +867,6 @@ class BatteryDevice(PowerDevice):
     def health_changed(self, was):
         if was != self.health:
             logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
-
-    def parse_notification(self, value):
-        if self.deviceUtil.broadcastUpdate(value):
-            return True
-        return False
-
-    # def dumpall(self):
-    #     logging.info("RAW voltage == {}, current == {}, soc == {}, capacity == {}, cycles == {}, status == {}, temperature == {}, health = {}".format(self.mvoltage, self.mcurrent, self.dsoc, self.mcapacity, self.charge_cycles, self.state, self.temperature, self.health))
 
 
 

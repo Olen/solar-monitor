@@ -6,7 +6,7 @@ class VictronUtil():
         self.DeviceType = device_type     
         self.PowerDevice = power_device                  
 
-    def notificationData(self):
+    def notificationUpdate(self):
         pass
 
     def pollData(self):

@@ -20,7 +20,7 @@ class SolarLinkUtil():
         self.poll_data = None
         self.poll_register = None
 
-    def pollerUpdate(self, register, value):
+    def notificationUpdate(self, register, value):
         '''
         Fortunately we read a different number of bytes from each register, so we can 
         abuse the "length" field (byte #3 in the response) as an "id"

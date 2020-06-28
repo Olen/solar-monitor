@@ -91,7 +91,7 @@ class MeritsunUtil():
         return False
 
 
-    def broadcastUpdate(self, data):
+    def notificationUpdate(self, data):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
         # logging.debug("broadcastUpdate Start {} {}".format(data, self.RevBuf))
         # logging.debug("RevIndex {}".format(self.Revindex))
