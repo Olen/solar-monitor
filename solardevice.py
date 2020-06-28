@@ -276,7 +276,7 @@ class PowerDevice():
     @need_polling.setter
     def need_polling(self, value):
         if value == True:
-            loggig.info("Enabling BLE-polling")
+            logging.info("Enabling BLE-polling")
         self._need_polling = value
 
     @property
