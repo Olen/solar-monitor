@@ -149,17 +149,19 @@ class SolarDevice(blegatt.Device):
 
 
         if self.need_polling:
-            t = threading.Thread(target=self.device_poller)
-            t.daemon = True 
-            t.name = "Device-poller-thread {}".format(self.logger_name)
-            t.start()
+            t1 = threading.Thread(target=self.device_poller)
+            t1.daemon = True 
+            t1.name = "Device-poller-thread {}".format(self.logger_name)
+            t1.start()
 
         # We only need and MQTT-poller thread if we have a write characteristic to send data to
         if self.char_write:
-            t = threading.Thread(target=self.mqtt_poller)
-            t.daemon = True 
-            t.name = "MQTT-poller-thread {}".format(self.logger_name)
-            t.start()
+            trigger = threading.Event()
+            self.datalogger.mqtt.trigger = trigger
+            t2 = threading.Thread(target=self.mqtt_poller, args=(trigger,))
+            t2.daemon = True 
+            t2.name = "MQTT-poller-thread {}".format(self.logger_name)
+            t2.start()
 
 
 
@@ -240,20 +242,24 @@ class SolarDevice(blegatt.Device):
 
     def device_poller(self):
         # Loop every second - the device plugin is responsible for not overloading the device with requests
-        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.currentThread().name))
+        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
         while True:
-            logging.debug("[{}] Looping thread {}".format(self.logger_name, threading.currentThread().name))
+            logging.debug("[{}] Looping thread {}".format(self.logger_name, threading.current_thread().name))
             data = self.util.pollRequest()
             if data:
                 self.characteristic_write_value(data)
             time.sleep(1)
 
-    def mqtt_poller(self):
+    def mqtt_poller(self, trigger):
         # Loop to fetch MQTT-commands
-        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.currentThread().name))
+        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
         while True:
             mqtt_sets = []
             datas = []
+            logging.debug("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
+            trigger.wait()
+            logging.debug("[{}] {} Event happened...".format(self.logger_name, threading.current_thread().name))
+            trigger.clear()
             try:
                 mqtt_sets = self.datalogger.mqtt.sets[self.logger_name]
                 self.datalogger.mqtt.sets[self.logger_name] = []
@@ -290,7 +296,7 @@ class PowerDevice():
             'val': 0,
             'min': 1,
             'max': 1000,
-            'maxdiff': 20
+            'maxdiff': 200
         }
         self._dkelvin = {
             'val': 2731,

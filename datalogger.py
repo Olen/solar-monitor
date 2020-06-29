@@ -28,6 +28,7 @@ class DataLoggerMqtt():
         if not prefix.endswith("/"):
             prefix = prefix + "/"
         self._prefix = prefix
+        self.trigger = None
 
     @property
     def prefix(self):
@@ -116,6 +117,8 @@ class DataLoggerMqtt():
         logging.debug("MQTT message retain flag={}".format(message.retain))
         (prefix, device, var, crap) = topic.split("/")
         self.sets[device].append((var, payload))
+        if self.trigger:
+            self.trigger.set()
 
     def on_log(self, client, userdata, level, buf):
         logging.debug("MQTT {}".format(buf))
