@@ -3,16 +3,16 @@
 This utility monitors defined BLE-devices, and sends parsed data to a remote server using either MQTT or json/HTTP
 
 Currently supported
-- SRNE regulators (monitored by the SolarLink APP: https://play.google.com/store/apps/details?id=com.shuorigf&hl=en_SG
-- Litium Batteries (monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower&hl=en_SG
-
+- SRNE regulators (monitored by the SolarLink APP: https://play.google.com/store/apps/details?id=com.shuorigf
+- Lithium Batteries (monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
+- Victron Energy - VE.Direct devices - currently not completed. Work in progress
 
 
 # Requirements
 Look at requirements.txt
 Be aware that libscrc is NOT pip-installable on RPI, so you need to build it from source: https://github.com/hex-in/libscrc
 
-It runs fine on a Raspberry Pi 4, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
+The monitor runs fine on a Raspberry Pi 4, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
 
 
 
@@ -21,11 +21,10 @@ It runs fine on a Raspberry Pi 4, making it ideal for monitoring places where th
 You need the following:
 
 * solar-monitor.py  The actual daemon 
-* solardevice.py    Extension of blegatt and some classes to store the values that are read from the BLE-devices
-* meritsunutil.py   Parsing and interpreting data from the Meritsun BLE-devices
-* solarlinkutil.py  Parsing and interpreting data from the SolarLink BLE-devices
+* solardevice.py    Extension of ble gatt and some classes to store the values that are read from the BLE-devices
 * duallog.py        CLI and file-logger with multiple destinations
 * datalogger.py     Class for pushing data to remote servers
+* plugins/*         Implemetation of vendor specific BLE parsing
 
 Also
 
@@ -83,6 +82,7 @@ And you can turn power on and off by sending
 `prefix/regulator/power_switch_state/set = 1`
 from another MQTT client connected to the broker.  *So do NOT connect to public brokers!*
 
+The MQTT-implemetation will automatically create sensors and switches in Home Assistant according to this spec: https://www.home-assistant.io/docs/mqtt/discovery/
 
 ## JSON
 The data will be posted as JSON to a given URL as an object:
