@@ -1,23 +1,37 @@
 [monitor]
 adapter = hci0
+debug = False
+temperature = C
+# C = Celsius
+# K = Kelvin
+# F = Farenheit
+
+
+
+[battery_1]
+type = Meritsun
+mac = 11:11:11:11:11:11
 reconnect = False
 
-[devices]
-battery_1 = 7c:01:0a:ff:ff:ff
-regulator = d4:36:39:00:00:00
+[battery_2]
+type = Meritsun
+mac = 11:11:11:11:11:11
+reconnect = False
 
-[services]
-# HR_SVC_UUID =          0000180d-0000-1000-8000-00805f9b34fb
-MERITSUN_SERVICE_UUID =  0000ffe0-0000-1000-8000-00805f9b34fb
-TBENERGY_SERVICE_UUID =  0000ffe0-0000-1000-8000-00805f9b34fb
-SOLARLINK_SERVICE_UUID = 0000fff0-0000-1000-8000-00805f9b34fb
+[regulator]
+type = SolarLink
+mac = 11:11:11:11:11:11
+reconnect = False
 
+[inverter_1]
+type = VictronConnect
+mac = 11:11:11:11:11:11
+reconnect = False
 
-[characteristics]
-# HR_MSRMT_UUID =        00002a37-0000-1000-8000-00805f9b34fb
-MERITSUN_NOTIFY_UUID =   0000ffe4-0000-1000-8000-00805f9b34fb
-TBENERGY_NOTIFY_UUID =   0000ffe4-0000-1000-8000-00805f9b34fb
-SOLARLINK_NOTIFY_UUID =  0000fff1-0000-1000-8000-00805f9b34fb
+[rectifier_1]
+type = VictronConnect
+mac = 11:11:11:11:11:11
+reconnect = False
 
 
 [datalogger]
