@@ -2,6 +2,10 @@ import logging
 
 
 class VictronUtil():
+    class Config():
+        SEND_ACK  = False
+        NEED_POLLING = False
+
     def __init__(self, device_type, power_device):                  
         self.DeviceType = device_type     
         self.PowerDevice = power_device                  

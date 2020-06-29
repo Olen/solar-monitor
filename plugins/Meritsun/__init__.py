@@ -13,18 +13,18 @@ import logging
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
 
+class Config():
+    SEND_ACK  = False
+    NEED_POLLING = False
+    NOTIFY_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
+    NOTIFY_CHAR_UUID = "0000ffe4-0000-1000-8000-00805f9b34fb"
 
-class MeritsunUtil():
+class Util():
     '''
     Class for reading and parsing data from various SpartPower-BLE-streams
     '''
-    class Config():
-        SEND_ACK  = False
-        NEED_POLLING = False
-        NOTIFY_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
-        NOTIFY_CHAR_UUID = "0000ffe4-0000-1000-8000-00805f9b34fb"
 
-    def __init__(self, device_type, power_device):
+    def __init__(self, power_device):
         self.SOI = 1
         self.INFO = 2
         self.EOI = 3
@@ -32,7 +32,6 @@ class MeritsunUtil():
         self.RevBuf = [None] * 122
         self.Revindex = 0
         # self.TAG = "SmartPowerUtil"
-        self.DeviceType = device_type
         self.PowerDevice = power_device
         self.end = 0
 
@@ -167,6 +166,7 @@ class MeritsunUtil():
 
     def handleMessage(self, message):
         # Accepts a list of hex-characters, and returns the human readable values into the powerDevice object
+        logging.debug("handleMessage {}".format(message))
         if message == None or "" == message:
             return False
         # logging.debug("test handleMessage == {}".format(message))
@@ -175,22 +175,23 @@ class MeritsunUtil():
             return False
         # logging.info("Parsing data from a {}".format(self.DeviceType))
 
-        self.PowerDevice.msg = message
+        self.PowerDevice.entities.msg = message
         # if self.DeviceType == '12V100Ah-027':
-        self.PowerDevice.mvoltage = self.getValue(message, 0, 7)
+        self.PowerDevice.entities.mvoltage = self.getValue(message, 0, 7)
+        logging.debug("mVoltage: {}".format(self.getValue(message, 0, 7)))
         mcurrent = self.getValue(message, 8, 15)
         if mcurrent > 2147483647:
             mcurrent = mcurrent - 4294967295
-        self.PowerDevice.mcurrent = mcurrent
-        self.PowerDevice.mcapacity = self.getValue(message, 16, 23)
-        self.PowerDevice.charge_cycles = self.getValue(message, 24, 27)
-        self.PowerDevice.soc = self.getValue(message, 28, 31)
-        self.PowerDevice.temperature = self.getValue(message, 32, 35)
-        self.PowerDevice.status = self.getValue(message, 36, 37)
-        self.PowerDevice.afestatus = self.getValue(message, 40, 41)
+        self.PowerDevice.entities.mcurrent = mcurrent
+        self.PowerDevice.entities.mcapacity = self.getValue(message, 16, 23)
+        self.PowerDevice.entities.charge_cycles = self.getValue(message, 24, 27)
+        self.PowerDevice.entities.soc = self.getValue(message, 28, 31)
+        self.PowerDevice.entities.temperature = self.getValue(message, 32, 35)
+        self.PowerDevice.entities.status = self.getValue(message, 36, 37)
+        self.PowerDevice.entities.afestatus = self.getValue(message, 40, 41)
         i = 0
         while i < 16:
-            self.PowerDevice.cell_mvoltage = (i + 1, self.getValue(message, (i * 4) + 44, (i * 4) + 47))
+            self.PowerDevice.entities.cell_mvoltage = (i + 1, self.getValue(message, (i * 4) + 44, (i * 4) + 47))
             i = i + 1
 
         return True

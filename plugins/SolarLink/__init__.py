@@ -3,15 +3,16 @@ import libscrc
 
 
 
+class Config():
+    NOTIFY_SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb"
+    NOTIFY_CHAR_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
+    WRITE_SERVICE_UUID = "0000ffd0-0000-1000-8000-00805f9b34fb"
+    WRITE_CHAR_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
+    SEND_ACK  = True
+    NEED_POLLING = True
+    DEVICE_ID = 255
 
-class SolarLinkUtil():
-    class Config():
-        NOTIFY_SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb"
-        NOTIFY_CHAR_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
-        WRITE_SERVICE_UUID = "0000ffd0-0000-1000-8000-00805f9b34fb"
-        WRITE_CHAR_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
-        SEND_ACK  = True
-        NEED_POLLING = True
+class Util():
 
     class BatteryParamInfo():
         REG_ADDR  = 256
@@ -35,8 +36,7 @@ class SolarLinkUtil():
         off      = 0
 
 
-    def __init__(self, device_type, power_device):                  
-        self.DeviceType = device_type     
+    def __init__(self, power_device):                  
         self.PowerDevice = power_device                  
         self.function_READ = 3
         self.function_WRITE = 6
@@ -49,7 +49,7 @@ class SolarLinkUtil():
         self.poll_data = None
         self.poll_register = None
 
-    def notificationUpdate(self, register, value):
+    def notificationUpdate(self, value):
         '''
         Fortunately we read a different number of bytes from each register, so we can 
         abuse the "length" field (byte #3 in the response) as an "id"
@@ -84,42 +84,60 @@ class SolarLinkUtil():
         return True
 
 
-    def buildRequest(self, function, start, data):
-        device_id = self.PowerDevice.device_id
-        bytes = []
-        bytes.append(device_id)
-        bytes.append(function)
-        bytes.append(self.Int2Bytes(start, 0))
-        bytes.append(self.Int2Bytes(start, 1))
-        bytes.append(self.Int2Bytes(data, 0))
-        bytes.append(self.Int2Bytes(data, 1))
+    def pollRequest(self, force = None):
+        data = None
+        self.poll_loop_count = self.poll_loop_count + 1
+        if self.poll_loop_count == 1:
+            data = self.create_poll_request('BatteryParamInfo')
+        if self.poll_loop_count == 3:
+            data = self.create_poll_request('SolarPanelInfo')
+        # if self.poll_loop_count == 5:
+        #     self.create_poll_request('SolarPanelAndBatteryState')
+        # if self.poll_loop_count == 7:
+        #     self.create_poll_request('ParamSettingData')
+        if self.poll_loop_count == 10:
+            self.poll_loop_count = 0
+        return data
 
-        crc = libscrc.modbus(bytearray(bytes))
-        bytes.append(self.Int2Bytes(crc, 1))
-        bytes.append(self.Int2Bytes(crc, 0))
-        logging.debug("{} {}".format("BuildRequest", bytes))
-        return bytes
 
+    def ackData(self, value):
+        return bytearray("main recv da ta[{0:02x}] [".format(value[0]), "ascii")
+
+
+    def cmdRequest(self, command, value):
+        cmd = None
+        datas = []
+        logging.debug("{} {} => {}".format('cmdRequest', command, value))
+        if command == 'power_switch_state':
+            if int(value) == 0:
+                cmd = 'RegulatorPowerOff'
+            elif int(value) == 1:
+                cmd = 'RegulatorPowerOn'  
+        if cmd:
+            datas.append(self.create_poll_request(cmd))
+            datas.append(self.create_poll_request('SolarPanelInfo'))
+            datas.append(self.create_poll_request('BatteryParamInfo'))
+        return datas
 
 
 
 
     def updateBatteryParamInfo(self, bs):
         logging.debug("mSOC {} {} => {} %".format(int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2)))
-        self.PowerDevice.soc = self.Bytes2Int(bs, 3, 2)
+        self.PowerDevice.entities.soc = self.Bytes2Int(bs, 3, 2)
         logging.debug("mVoltage {} {} => {} V".format(int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * 0.1))
-        self.PowerDevice.charge_voltage = self.Bytes2Int(bs, 5, 2) * 0.1
+        self.PowerDevice.entities.charge_voltage = self.Bytes2Int(bs, 5, 2) * 0.1
         logging.debug("mElectricity {} {} => {} A".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2) * 0.01))
-        self.PowerDevice.charge_current = self.Bytes2Int(bs, 7, 2) * 0.01
+        self.PowerDevice.entities.charge_current = self.Bytes2Int(bs, 7, 2) * 0.01
         logging.debug("mDeviceTemperature {}".format(int(bs[9])))
-        self.PowerDevice.temperature_celsius = self.Bytes2Int(bs, 9, 1)
+        self.PowerDevice.entities.temperature_celsius = self.Bytes2Int(bs, 9, 1)
         logging.debug("mBatteryTemperature {}".format(int(bs[10])))
         logging.debug("mLoadVoltage {} {} => {} V".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2) * 0.1))
-        self.PowerDevice.voltage = self.Bytes2Int(bs, 11, 2) * 0.1
+        self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 11, 2) * 0.1
         logging.debug("mLoadElectricity {} {} => {} A".format(int(bs[13]), int(bs[14]), self.Bytes2Int(bs, 13, 2) * 0.01))
-        self.PowerDevice.current = self.Bytes2Int(bs, 13, 2) * 0.01
+        self.PowerDevice.entities.current = self.Bytes2Int(bs, 13, 2) * 0.01
         logging.debug("mLoadPower {} {} => {} W".format(int(bs[15]), int(bs[16]), self.Bytes2Int(bs, 15, 2)))
-        self.PowerDevice.power = self.Bytes2Int(bs, 15, 2)
+        self.PowerDevice.entities.power = self.Bytes2Int(bs, 15, 2)
         return
 
 
@@ -132,13 +150,13 @@ class SolarLinkUtil():
 
     def updateSolarPanelInfo(self, bs):
         logging.debug("mVoltage {} {} => {}".format(int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2) * 0.1))
-        self.PowerDevice.input_voltage = self.Bytes2Int(bs, 3, 2) * 0.1
+        self.PowerDevice.entities.input_voltage = self.Bytes2Int(bs, 3, 2) * 0.1
         logging.debug("mElectricity {} {} => {}".format(int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * 0.01))
-        self.PowerDevice.input_current = self.Bytes2Int(bs, 5, 2) * 0.01
+        self.PowerDevice.entities.input_current = self.Bytes2Int(bs, 5, 2) * 0.01
         logging.debug("mChargingPower {} {} => {}".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2)))
-        self.PowerDevice.input_power = self.Bytes2Int(bs, 7, 2)
+        self.PowerDevice.entities.input_power = self.Bytes2Int(bs, 7, 2)
         logging.debug("mSwitch {} {} => {}".format(int(bs[9]), int(bs[10]), self.Bytes2Int(bs, 9, 2)))
-        self.PowerDevice.power_switch_state = self.Bytes2Int(bs, 9, 2)
+        self.PowerDevice.entities.power_switch_state = self.Bytes2Int(bs, 9, 2)
         logging.debug("mUnkown {} {} => {}".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2)))
 
 
@@ -255,30 +273,14 @@ class SolarLinkUtil():
         logging.warning("CRC Failed: {} - Check: {}".format(crc, check))
         return False
 
-    def ackData(self, value):
-        return bytearray("main recv da ta[{0:02x}] [".format(value[0]), "ascii")
 
-    def pollData(self, force = None):
-        data = None
-        if force is not None:
-            return self.do_poll(force)
 
-        self.poll_loop_count = self.poll_loop_count + 1
-        if self.poll_loop_count == 1:
-            data = self.do_poll('BatteryParamInfo')
-        if self.poll_loop_count == 3:
-            data = self.do_poll('SolarPanelInfo')
-        # if self.poll_loop_count == 5:
-        #     self.do_poll('SolarPanelAndBatteryState')
-        # if self.poll_loop_count == 7:
-        #     self.do_poll('ParamSettingData')
-        if self.poll_loop_count == 10:
-            data = self.poll_loop_count = 0
-        return data
-
-    def do_poll(self, cmd):                             
+    def create_poll_request(self, cmd):                             
+        logging.debug("{} {}".format("create_poll_request", cmd))
         data = None                                
         function = self.function_READ                          
+        device_id = self.PowerDevice.device_id
+        self.poll_register = cmd                                          
         if cmd == 'SolarPanelAndBatteryState':                    
             regAddr = self.SolarPanelAndBatteryState.REG_ADDR                   
             readWrd = self.SolarPanelAndBatteryState.READ_WORD
@@ -299,8 +301,21 @@ class SolarLinkUtil():
             regAddr = self.RegulatorPower.REG_ADDR
             readWrd = self.RegulatorPower.off                                                                         
             function = self.function_WRITE                                     
-                                                             
-        self.poll_register = cmd                                          
-        return self.buildRequest(function, regAddr, readWrd)                                                                                
+
+        if regAddr:
+            data = []
+            data.append(self.PowerDevice.device_id)
+            data.append(function)
+            data.append(self.Int2Bytes(regAddr, 0))
+            data.append(self.Int2Bytes(regAddr, 1))
+            data.append(self.Int2Bytes(readWrd, 0))
+            data.append(self.Int2Bytes(readWrd, 1))
+
+            crc = libscrc.modbus(bytearray(data))
+            data.append(self.Int2Bytes(crc, 1))
+            data.append(self.Int2Bytes(crc, 0))
+            logging.debug("{} {} => {}".format("create_poll_request", cmd, data))
+        return data
+
 
 

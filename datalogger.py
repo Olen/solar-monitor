@@ -24,7 +24,7 @@ class DataLoggerMqtt():
         self.client.loop_start()                                            # start the loop
 
         self.sensors = []
-        self.sets = []
+        self.sets = {}
         if not prefix.endswith("/"):
             prefix = prefix + "/"
         self._prefix = prefix
@@ -60,7 +60,7 @@ class DataLoggerMqtt():
             "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
             "unique_id": "{}_{}_{}".format(self.prefix[:-1], device, var),
             "state_topic": topic,
-            "command_topic": "{}{}/{}/set".format(self.prefix, device, var)
+            "command_topic": "{}{}/{}/set".format(self.prefix, device, var),
             "force_update": True,
             "payload_on": 1,
             "payload_off": 0,
@@ -95,6 +95,7 @@ class DataLoggerMqtt():
             self.client.subscribe((topic, 0))
         except Exception as e:
             logging.error("MQTT: {}".format(e))
+        self.sets[device] = []
 
 
 
@@ -109,11 +110,12 @@ class DataLoggerMqtt():
     def on_message(self, client, userdata, message):
         topic = message.topic
         payload = message.payload.decode("utf-8")
-        self.sets.append((topic, payload))
         logging.debug("MQTT message received {}".format(str(message.payload.decode("utf-8"))))
         logging.debug("MQTT message topic={}".format(message.topic))
         logging.debug("MQTT message qos={}".format(message.qos))
         logging.debug("MQTT message retain flag={}".format(message.retain))
+        (prefix, device, var, crap) = topic.split("/")
+        self.sets[device].append((var, payload))
 
     def on_log(self, client, userdata, level, buf):
         logging.debug("MQTT {}".format(buf))

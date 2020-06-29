@@ -37,39 +37,59 @@ class SolarDeviceManager(blegatt.DeviceManager):
 
 # implementation of blegatt.Device, connects to selected GATT device
 class SolarDevice(blegatt.Device):
-    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False):
+    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=None, config=None):
         super().__init__(mac_address=mac_address, manager=manager)
-        self.auto_reconnect = reconnect
         self.reader_activity = None
         self.logger_name = logger_name
-        self.services_list = []
-        self.services_write_list = []
-        self.notify_list = []
-        self.write_list = []
+        self.service_notify = None
+        self.service_write = None
+        self.char_notify = None
+        self.char_write = None
+        self.device_id = None
+        self.send_ack = None
+        self.need_polling = None
+        self.util = None
+        self.type = None
+        self.module = None
         self.device_write_characteristic = None
-        self.datalogger = None
+        self.datalogger = datalogger
+        if config:
+            self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
+            self.type = config.get(logger_name, 'type', fallback=None)
         self.writing = False
-        self.write_buffer = []
+
+        if not self.type:
+            return
+
+        try:
+            mod = __import__("plugins." + self.type)
+            self.module = getattr(mod, self.type)
+            logging.info("Successfully imported {}.".format(self.type))
+        except ImportError:
+            logging.error("Error importing {}".format(self.type))
+            raise ImportError()
+
+        self.service_notify = getattr(self.module.Config, "NOTIFY_SERVICE_UUID", None)
+        self.service_write = getattr(self.module.Config, "WRITE_SERVICE_UUID", None)
+        self.char_notify = getattr(self.module.Config, "NOTIFY_CHAR_UUID", None)
+        self.char_write = getattr(self.module.Config, "WRITE_CHAR_UUID", None)
+        self.device_id = getattr(self.module.Config, "DEVICE_ID", None)
+        self.need_polling = getattr(self.module.Config, "NEED_POLLING", None)
+        self.send_ack = getattr(self.module.Config, "SEND_ACK", None)
 
         if "battery" in self.logger_name:
             self.entities = BatteryDevice(parent=self)
         elif "regulator" in self.logger_name:
             self.entities = RegulatorDevice(parent=self)
-            self.entities.device_id = 255
-            self.entities.need_polling = True
-            self.entities.send_ack = True
+        elif "inverter" in self.logger_name:
+            self.entities = InverterDevice(parent=self)
+        elif "rectifier" in self.logger_name:
+            self.entities = RectifierDevice(parent=self)
         else:
             self.entities = PowerDevice(parent=self)
 
+        self.util = self.module.Util(self)  
 
-    def add_services(self, services_list, notify_list, services_write_list, write_list):
-        self.services_list = services_list
-        self.notify_list = notify_list
-        self.write_list = write_list
-        self.services_write_list = services_write_list
-    def add_datalogger(self, datalogger):
-        self.datalogger = datalogger
-        self.entities.add_datalogger(datalogger)
 
     def alias(self):
         return super().alias().strip()
@@ -85,58 +105,61 @@ class SolarDevice(blegatt.Device):
     def connect_failed(self, error):
         super().connect_failed(error)
         logging.info("[{}] Connection failed: {}".format(self.logger_name, str(error)))
+        raise ConnectionError()
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
         logging.info("[{}] Disconnected".format(self.logger_name))
         if self.auto_reconnect:
+            logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
+            time.sleep(10)
             self.connect()
 
     def services_resolved(self):
         super().services_resolved()
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
+
         device_notification_service = None
         device_write_service = None
-
         for service in self.services:
             logging.info("[{}]  Service [{}]".format(self.logger_name, service.uuid))
-            if service.uuid in self.services_list:
+            if self.service_notify and service.uuid == self.service_notify:
                 logging.info("[{}]  - Found dev notify service [{}]".format(self.logger_name, service.uuid))
                 device_notification_service = service
-            if service.uuid in self.services_write_list:
+            if self.service_write and service.uuid == self.service_write:
                 logging.info("[{}]  - Found dev write service [{}]".format(self.logger_name, service.uuid))
                 device_write_service = service
             for characteristic in service.characteristics:
                 logging.info("[{}]    Characteristic [{}]".format(self.logger_name, characteristic.uuid))
 
 
-
         if device_notification_service:
             for c in device_notification_service.characteristics:
-                if c.uuid in self.notify_list:
+                if self.char_notify and c.uuid == self.char_notify:
                     logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, c.uuid))
                     logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
                     c.enable_notifications()
         if device_write_service:
             for c in device_write_service.characteristics:
-                if c.uuid in self.write_list:
+                if self.char_write and c.uuid == self.char_write:
                     logging.info("[{}] Found dev write char [{}]".format(self.logger_name, c.uuid))
                     logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
                     self.device_write_characteristic = c
 
 
-        if self.entities.need_polling:
-            t = threading.Thread(target=self.thread_poll)
+        if self.need_polling:
+            t = threading.Thread(target=self.device_poller)
             t.daemon = True 
-            t.name = "Poller-thread {}".format(self.logger_name)
+            t.name = "Device-poller-thread {}".format(self.logger_name)
             t.start()
 
-    def thread_poll(self):
-        # Implement polling in a separate thread to be able to
-        # sleep without blocking notifications
-        logging.debug("Starting new thread {}".format(threading.currentThread().name))
-        self.entities.device_poller()
+        # We only need and MQTT-poller thread if we have a write characteristic to send data to
+        if self.char_write:
+            t = threading.Thread(target=self.mqtt_poller)
+            t.daemon = True 
+            t.name = "MQTT-poller-thread {}".format(self.logger_name)
+            t.start()
 
 
 
@@ -148,11 +171,11 @@ class SolarDevice(blegatt.Device):
         # logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
         # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
 
-        if self.entities.send_ack:
-            time.sleep(.5)
-            self.entities.ack(value)
+        if self.send_ack:
+            data = self.util.ackData(value)
+            self.characteristic_write_value(data)
 
-        if self.entities.parse_notification(value):
+        if self.util.notificationUpdate(value):
             # We received some new data. Lets push it to the datalogger
             items = ['current', 'input_current', 'charge_current',
                      'voltage', 'input_voltage', 'charge_voltage',
@@ -172,6 +195,7 @@ class SolarDevice(blegatt.Device):
             except:
                 pass
 
+            # And all cells if a battery
             try:
                 for cell in self.entities.cell_mvoltage:
                     if self.entities.cell_mvoltage[cell]['val'] > 0:
@@ -187,11 +211,6 @@ class SolarDevice(blegatt.Device):
         super().characteristic_enable_notifications_failed(characteristic, error)
         logging.warning("[{}] Enabling notifications failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
 
-
-    def run_write_buffer(self):
-        if self.writing == False and len(self.write_buffer) > 0:
-            data = self.write_buffer.pop(0)
-            self.characteristic_write_value(data)
 
     def characteristic_write_value(self, value):
         if self.device_write_characteristic:
@@ -209,9 +228,49 @@ class SolarDevice(blegatt.Device):
     def characteristic_write_value_failed(self, characteristic, error):
         super().characteristic_write_value_failed(characteristic, error)
         logging.warning("[{}] Write to characteristic failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
-        self.writing = False
+        if error == "In Progress" and self.writing is not False:
+            time.sleep(0.1)
+            self.characteristic_write_value(self.writing)
+        else:
+            self.writing = False
 
+    # Pollers
+    # Implement polling in separate threads to be able to
+    # sleep without blocking notifications
 
+    def device_poller(self):
+        # Loop every second - the device plugin is responsible for not overloading the device with requests
+        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.currentThread().name))
+        while True:
+            logging.debug("[{}] Looping thread {}".format(self.logger_name, threading.currentThread().name))
+            data = self.util.pollRequest()
+            if data:
+                self.characteristic_write_value(data)
+            time.sleep(1)
+
+    def mqtt_poller(self):
+        # Loop to fetch MQTT-commands
+        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.currentThread().name))
+        while True:
+            mqtt_sets = []
+            datas = []
+            try:
+                mqtt_sets = self.datalogger.mqtt.sets[self.logger_name]
+                self.datalogger.mqtt.sets[self.logger_name] = []
+            except Exception as e:
+                pass
+            for msg in mqtt_sets:
+                var = msg[0]
+                message = msg[1]
+                logging.debug("[{}] MQTT-msg: {} -> {}".format(self.logger_name, var, message))
+                datas = self.util.cmdRequest(var, message)
+                if len(datas) > 0:
+                    for data in datas:
+                        logging.debug("[{}] Sending data to device: {}".format(self.logger_name, data))
+                        self.characteristic_write_value(data)
+                        time.sleep(0.2)
+                else:
+                    logging.debug("[{}] Unknown MQTT-command {} -> {}".format(self.logger_name, var, message))
 
 
 class PowerDevice():
@@ -223,24 +282,10 @@ class PowerDevice():
     Most setters will validate the input to guard against false Zero-values
     '''
     def __init__(self, parent=None):
+        logging.debug("New PowerDevice")
         self._parent = parent
-        self._device_id = 0
-        self._send_ack = False
-        self._need_polling = False
-        self._poll_register = None
         self._cell_mvoltage = {}
-        self._mcurrent = {
-            'val': 0,
-            'min': 0,
-            'max': 30000,
-            'maxdiff': 10000
-        }
-        self._mpower = {
-            'val': 0,
-            'min': 0,
-            'max': 200000,
-            'maxdiff': 100000
-        }
+        self._power_switch_state = 0
         self._dsoc = {
             'val': 0,
             'min': 1,
@@ -259,15 +304,76 @@ class PowerDevice():
             'max': 250000,
             'maxdiff': 10
         }
+        self._mcurrent = {
+            'val': 0,
+            'min': 0,
+            'max': 30000,
+            'maxdiff': 10000
+        }
+        self._mpower = {
+            'val': 0,
+            'min': 0,
+            'max': 200000,
+            'maxdiff': 100000
+        }
         self._mvoltage = {
             'val': 0,
             'min': 0,
             'max': 48000,
             'maxdiff': 12000
         }
+        self._input_mcurrent = {
+            'val': 0,
+            'min': 0,
+            'max': 30000,
+            'maxdiff': 10000
+        }
+        self._input_mpower = {
+            'val': 0,
+            'min': 0,
+            'max': 200000,
+            'maxdiff': 100000
+        }
+        self._input_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 48000,
+            'maxdiff': 12000
+        }
+        self._charge_mcurrent = {
+            'val': 0,
+            'min': 0,
+            'max': 30000,
+            'maxdiff': 10000
+        }
+        self._charge_mpower = {
+            'val': 0,
+            'min': 0,
+            'max': 200000,
+            'maxdiff': 100000
+        }
+        self._charge_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 48000,
+            'maxdiff': 12000
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 15000,
+            'maxdiff': 15000
+        }
         self._msg = None
         self._status = None
-        self.datalogger = None
+
+    @property
+    def device_id(self):
+        return self._device_id
+    @device_id.setter
+    def device_id(self, value):
+        self._device_id = int(value)
+
 
     @property
     def need_polling(self):
@@ -278,13 +384,6 @@ class PowerDevice():
         if value == True:
             logging.info("Enabling BLE-polling")
         self._need_polling = value
-
-    @property
-    def device_id(self):
-        return self._device_id
-    @device_id.setter
-    def device_id(self, value):
-        self._device_id = int(value)
 
     @property
     def send_ack(self):
@@ -313,38 +412,10 @@ class PowerDevice():
     def alias(self):
         return self.parent.alias()
 
-    def add_datalogger(self, datalogger):
-        self.datalogger = datalogger
 
     @property
-    def mcurrent(self):
-        return self._mcurrent['val']
-    @mcurrent.setter
-    def mcurrent(self, value):
-        self.validate('_mcurrent', value)
-
-    @property
-    def current(self):
-        return round(self.mcurrent / 1000, 1)
-    @current.setter
-    def current(self, value):
-        self.mcurrent = value * 1000
-
-
-    @property
-    def mpower(self):
-        return self._mpower['val']
-    @mpower.setter
-    def mpower(self, value):
-        self.validate('_mpower', value)
-
-    @property
-    def power(self):
-        return round(self.mpower / 1000, 1)
-    @power.setter
-    def power(self, value):
-        self.mpower = value * 1000
-
+    def datalogger(self):
+        return self.parent.datalogger
 
     @property 
     def dsoc(self):
@@ -398,6 +469,7 @@ class PowerDevice():
     def capacity(self, value):
         self.mcapacity = value * 1000
 
+    # Voltage
     @property
     def mvoltage(self):
         return self._mvoltage['val']
@@ -413,162 +485,6 @@ class PowerDevice():
         self.mvoltage = value * 1000
 
     @property
-    def msg(self):
-        return self._msg
-    @msg.setter
-    def msg(self, message):
-        self._msg = message
-
-    @property
-    def status(self):
-        return self._status
-    @status.setter
-    def status(self, value):
-        self._status = value
-
-    def dumpall(self):
-        out = "RAW "
-        for var in self.__dict__:
-            if var != "_msg":
-                out = "{} {} == {},".format(out, var, self.__dict__[var])
-        logging.debug(out)
-
-    
-    def validate(self, var, val):
-        definition = getattr(self, var)
-        val = float(val)
-        if val == definition['val']:
-            logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.name, var, definition['val'], val))
-            return False
-        if val > definition['max']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> max {})".format(self.name, var, definition['val'], val, definition['max']))
-            return False
-        if val < definition['min']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.name, var, definition['val'], val, definition['min']))
-            return False
-        if (definition['val'] != 0 and definition['val'] != 2731) and abs(val - definition['val']) > definition['maxdiff']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, var, definition['val'], val, definition['maxdiff']))
-            return False
-        logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
-        self.__dict__[var]['val'] = val
-        
-    def device_poller(self):
-        pass
-
-    def ack(self):
-        pass
-
-    def mqtt_poller(self):
-        return []
-
-    def parse_notification(self, value):
-        if self.deviceUtil.notificationUpdate(value):
-            return True
-        return False
-
-
-class InverterDevice(PowerDevice):
-    '''
-    Special class for Regulator-devices.  (DC-AC)
-    Extending PowerDevice class with more properties specifically for the regulators
-    '''
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self._input_mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 50000,
-            'maxdiff': 50000
-        }
-        self._mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 250000,
-            'maxdiff': 250000
-        }
-        self._power_switch_state = 0
-        self.deviceUtil = VictronUtil(self.alias(), self)  
-
-
-class RectifierDevice(PowerDevice):
-    '''
-    Special class for Rectifier-devices  (AC-DC).  
-    Extending PowerDevice class with more properties specifically for the regulators
-    '''
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self._input_mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 250000,
-            'maxdiff': 250000
-        }
-        self._mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 50000,
-            'maxdiff': 50000
-        }
-        self._power_switch_state = 0
-        self.deviceUtil = VictronutilUtil(self.alias(), self)  
-
-
-class RegulatorDevice(PowerDevice):
-    '''
-    Special class for Regulator-devices.  
-    Extending PowerDevice class with more properties specifically for the regulators
-    '''
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self._input_mcurrent = {
-            'val': 0,
-            'min': 0,
-            'max': 30000,
-            'maxdiff': 10000
-        }
-        self._input_mpower = {
-            'val': 0,
-            'min': 0,
-            'max': 200000,
-            'maxdiff': 100000
-        }
-        self._input_mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 48000,
-            'maxdiff': 12000
-        }
-        self._charge_mcurrent = {
-            'val': 0,
-            'min': 0,
-            'max': 30000,
-            'maxdiff': 10000
-        }
-        self._charge_mpower = {
-            'val': 0,
-            'min': 0,
-            'max': 200000,
-            'maxdiff': 100000
-        }
-        self._charge_mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 48000,
-            'maxdiff': 12000
-        }
-        self._mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 15000,
-            'maxdiff': 15000
-        }
-        self._power_switch_state = 0
-        self.deviceUtil = SolarLinkUtil(self.alias(), self)  
-
-
-    # Voltage
-
-    @property
     def input_mvoltage(self):
         return self._input_mvoltage['val']
     @input_mvoltage.setter
@@ -581,6 +497,7 @@ class RegulatorDevice(PowerDevice):
     @input_voltage.setter
     def input_voltage(self, value):
         self.input_mvoltage = value * 1000
+
 
     @property
     def charge_mvoltage(self):
@@ -597,6 +514,20 @@ class RegulatorDevice(PowerDevice):
         self.charge_mvoltage = value * 1000
 
     # current
+    @property
+    def mcurrent(self):
+        return self._mcurrent['val']
+    @mcurrent.setter
+    def mcurrent(self, value):
+        self.validate('_mcurrent', value)
+
+    @property
+    def current(self):
+        return round(self.mcurrent / 1000, 1)
+    @current.setter
+    def current(self, value):
+        self.mcurrent = value * 1000
+
 
     @property
     def input_mcurrent(self):
@@ -628,6 +559,20 @@ class RegulatorDevice(PowerDevice):
 
 
     # power
+    @property
+    def mpower(self):
+        return self._mpower['val']
+    @mpower.setter
+    def mpower(self, value):
+        self.validate('_mpower', value)
+
+    @property
+    def power(self):
+        return round(self.mpower / 1000, 1)
+    @power.setter
+    def power(self, value):
+        self.mpower = value * 1000
+
 
     @property
     def input_mpower(self):
@@ -664,9 +609,9 @@ class RegulatorDevice(PowerDevice):
 
     @power_switch_state.setter
     def power_switch_state(self, value):
-        if value.lower() == "on":
+        if str(value).lower() == "on":
             value = 1
-        if value.lower() == "off":
+        if str(value).lower() == "off":
             value = 0
         if value != self._power_switch_state:
             self._power_switch_state = value
@@ -675,62 +620,106 @@ class RegulatorDevice(PowerDevice):
             except:
                 pass
 
-    def ack(self, value):
-        data = self.deviceUtil.ackData(value)
-        self.parent.characteristic_write_value(data)
-
-    def device_poller(self):
-        while True:
-            logging.debug("Looping thread {}".format(threading.currentThread().name))
-            data = self.deviceUtil.pollData()
-            if data:
-                self.parent.characteristic_write_value(data)
-
-            cmds = self.mqtt_poller()
-            if len(cmds) > 0: 
-                for cmd in cmds:
-                    time.sleep(0.5)
-                    if cmd == 'cmdPowerSwitchOff':
-                        self.power_switch_state = 0
-                        data = self.deviceUtil.pollData('RegulatorPowerOff')
-                        self.parent.characteristic_write_value(data)
-                    if cmd == 'cmdPowerSwitchOn':
-                        self.power_switch_state = 1
-                        data = self.deviceUtil.pollData('RegulatorPowerOn')
-                        self.parent.characteristic_write_value(data)
-                    time.sleep(0.5)
-                # Refresh data after cmd
-                data = self.deviceUtil.pollData('SolarPanelInfo')
-                self.parent.characteristic_write_value(data)
-                time.sleep(0.5)
-                data = self.deviceUtil.pollData('BatteryParamInfo')
-                self.parent.characteristic_write_value(data)
-
-            time.sleep(1)
 
 
-    def mqtt_poller(self):
-        logging.debug("Running MQTT-poller")
-        mqtt_sets = []
-        ret = []
-        try:
-            mqtt_sets = self.datalogger.mqtt.sets
-            self.datalogger.mqtt.sets = []
-        except Exception as e:
-            pass
-        for msg in mqtt_sets:
-            logging.debug("MQTT-msg: {} -> {}".format(msg[0], msg[1]))
-            topic = msg[0]
-            message = msg[1]
-            if topic == 'leveld/regulator/power_switch_state/set':
-                logging.info("Switching Power Switch to {}".format(message))
-                if int(message) == 0:
-                    ret.append('cmdPowerSwitchOff')
-                    self.power_switch_state = 0
-                if int(message) == 1:
-                    ret.append('cmdPowerSwitchOn')
-                    self.power_switch_state = 1
-        return ret
+    @property
+    def msg(self):
+        return self._msg
+    @msg.setter
+    def msg(self, message):
+        self._msg = message
+
+    @property
+    def status(self):
+        return self._status
+    @status.setter
+    def status(self, value):
+        self._status = value
+
+    def dumpAll(self):
+        out = "RAW "
+        for var in self.__dict__:
+            if var != "_msg":
+                out = "{} {} == {},".format(out, var, self.__dict__[var])
+        logging.debug(out)
+
+    
+    def validate(self, var, val):
+        definition = getattr(self, var)
+        val = float(val)
+        if val == definition['val']:
+            logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.name, var, definition['val'], val))
+            return False
+        if val > definition['max']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> max {})".format(self.name, var, definition['val'], val, definition['max']))
+            return False
+        if val < definition['min']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.name, var, definition['val'], val, definition['min']))
+            return False
+        if (definition['val'] != 0 and definition['val'] != 2731) and abs(val - definition['val']) > definition['maxdiff']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, var, definition['val'], val, definition['maxdiff']))
+            return False
+        logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
+        self.__dict__[var]['val'] = val
+        
+
+class InverterDevice(PowerDevice):
+    '''
+    Special class for Regulator-devices.  (DC-AC)
+    Extending PowerDevice class with more properties specifically for the regulators
+    '''
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        logging.debug("New InverterDevice")
+        self._input_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 50000,
+            'maxdiff': 50000
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 250000,
+            'maxdiff': 250000
+        }
+        self._power_switch_state = 0
+
+
+class RectifierDevice(PowerDevice):
+    '''
+    Special class for Rectifier-devices  (AC-DC).  
+    Extending PowerDevice class with more properties specifically for the regulators
+    '''
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        logging.debug("New RectifierDevice")
+        self._input_mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 250000,
+            'maxdiff': 250000
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 0,
+            'max': 50000,
+            'maxdiff': 50000
+        }
+        self._power_switch_state = 0
+
+
+class RegulatorDevice(PowerDevice):
+    '''
+    Special class for Regulator-devices.  
+    Extending PowerDevice class with more properties specifically for the regulators
+    '''
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        logging.debug("New RegulatorDevice")
+
+
+
             
             
 
@@ -758,6 +747,7 @@ class BatteryDevice(PowerDevice):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        logging.debug("New BatteryDevice")
         self._health = None
         self._state = None
         self._charge_cycles = {
@@ -775,11 +765,6 @@ class BatteryDevice(PowerDevice):
                 'max': 4000,
                 'maxdiff': 500
             }
-        self.deviceUtil = MeritsunUtil(self.alias(), self)  
-
-    @property
-    def device_id(self):
-        return self._device_id
 
     @property
     def charge_cycles(self):
@@ -806,7 +791,6 @@ class BatteryDevice(PowerDevice):
     @mcurrent.setter
     def mcurrent(self, value):
         super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
-        # super().mcurrent = value
         if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
             return
         was = self.state
@@ -821,7 +805,6 @@ class BatteryDevice(PowerDevice):
     @current.setter
     def current(self, value):
         super(BatteryDevice, self.__class__).current.fset(self, value)
-        # super().current(value)
         if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
             return
         was = self.state
@@ -857,8 +840,6 @@ class BatteryDevice(PowerDevice):
     @property
     def state(self):
         return self._state
-
-
 
     def state_changed(self, was):
         if was != self.state:
