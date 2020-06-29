@@ -45,12 +45,16 @@ class DataLoggerMqtt():
         topic = "{}{}/{}/state".format(self.prefix, device, var)
         if topic not in self.sensors:
             if "power_switch" in var:
+                # self.delete_switch(device, var)
+                # time.sleep(2)
                 self.create_switch(device, var)
                 self.create_listener(device, var)
             else:
+                # self.delete_sensor(device, var)
+                # time.sleep(2)
                 self.create_sensor(device, var)
             self.sensors.append(topic)
-            time.sleep(0.5)
+            time.sleep(1)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         ret = self.client.publish(topic, val, retain=True)
 
@@ -59,21 +63,22 @@ class DataLoggerMqtt():
         logging.debug("Creating MQTT-switch {}".format(topic))
         ha_topic = "homeassistant/switch/{}/{}/config".format(device, var)
         val = {
-            "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
+            "name": "{} {} {}".format(self.prefix[:-1].capitalize(), device.replace("_", " ").title(), var.replace("_", " ").title()),
             "unique_id": "{}_{}_{}".format(self.prefix[:-1], device, var),
             "state_topic": topic,
             "command_topic": "{}{}/{}/set".format(self.prefix, device, var),
-            "force_update": True,
             "payload_on": 1,
             "payload_off": 0,
         }
+        ret = self.client.publish(ha_topic, json.dumps(val), retain=True)
+
 
     def create_sensor(self, device, var):
         topic = "{}{}/{}/state".format(self.prefix, device, var)
         logging.debug("Creating MQTT-sensor {}".format(topic))
         ha_topic = "homeassistant/sensor/{}/{}/config".format(device, var)
         val = {
-            "name": "{}_{}_{}".format(self.prefix[:-1], device, var),
+                "name": "{} {} {}".format(self.prefix[:-1].capitalize(), device.replace("_", " ").title(), var.replace("_", " ").title()),
             "unique_id": "{}_{}_{}".format(self.prefix[:-1], device, var),
             "state_topic": topic,
             "force_update": True,
@@ -85,10 +90,15 @@ class DataLoggerMqtt():
         if var == "soc":
             val['device_class'] = "battery"
 
-
-
         ret = self.client.publish(ha_topic, json.dumps(val), retain=True)
 
+    def delete_switch(self, device, var):
+        ha_topic = "homeassistant/switch/{}/{}/config".format(device, var)
+        ret = self.client.publish(ha_topic, payload=None)
+
+    def delete_sensor(self, device, var):
+        ha_topic = "homeassistant/sensor/{}/{}/config".format(device, var)
+        ret = self.client.publish(ha_topic, payload=None)
 
     def create_listener(self, device, var):
         topic = "{}{}/{}/set".format(self.prefix, device, var)
