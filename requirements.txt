@@ -1,4 +1,4 @@
-blegatt
+gatt
 configparser
 libscrc
 json
