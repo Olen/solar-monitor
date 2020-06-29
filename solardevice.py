@@ -9,7 +9,7 @@ import configparser
 import time
 import os
 import sys
-import blegatt
+import gatt
 import time
 from datetime import datetime
 
@@ -19,14 +19,11 @@ import logging
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
 from datalogger import DataLogger
-from meritsunutil import MeritsunUtil
-from solarlinkutil import SolarLinkUtil
-from victronutil import VictronUtil
 
 
 
 # implementation of blegatt.DeviceManager, discovers any GATT device
-class SolarDeviceManager(blegatt.DeviceManager):
+class SolarDeviceManager(gatt.DeviceManager):
     def device_discovered(self, device):
         logging.info("[{}] Discovered, alias = {}".format(device.mac_address, device.alias()))
         # self.stop_discovery()   # in case to stop after discovered one device
@@ -36,7 +33,7 @@ class SolarDeviceManager(blegatt.DeviceManager):
 
 
 # implementation of blegatt.Device, connects to selected GATT device
-class SolarDevice(blegatt.Device):
+class SolarDevice(gatt.Device):
     def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=None, config=None):
         super().__init__(mac_address=mac_address, manager=manager)
         self.reader_activity = None
