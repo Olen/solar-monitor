@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from argparse import ArgumentParser
 import configparser
 import time
@@ -101,75 +103,6 @@ try:
 except KeyboardInterrupt:
     pass
 
-
-sys.exit()
-
-
-devices = {}
-for item in config.items("devices"):
-    devices[item[1].lower()] = item[0].lower()
-
-    # logging.info("Looking at {}...".format(dev.mac_address))
-    # if dev.mac_address != "d8:64:8c:66:f4:d4" and dev.mac_address != "7c:01:0a:41:ca:f9":
-    # if dev.mac_address != "d8:64:8c:66:f4:d4":
-    if dev.mac_address.lower() in devices:
-        logging.info("Trying to connect to {}...".format(dev.mac_address))
-        device = SolarDevice(mac_address=dev.mac_address, manager=device_manager, logger_name=devices[dev.mac_address], reconnect=config.getboolean('monitor', 'reconnect'))
-        device.add_services(dev_services_list, dev_notify_list, dev_services_write_list, dev_write_list)
-        device.add_datalogger(datalogger)
-        device.connect()
-
-
-
-
-
-
- 
-            
-
-
-
-types = []
-macs  = []
-
-for x in c:
-    print(x)
-    if c.get(x, "mac", fallback=None) and c.get(x, "type", fallback=None):
-        t = c.get(x, "type")
-        if t not in types:
-            types.append(t)
-
-        macs.append(c.get(x, "mac"))
-
-modules = {}
-for x in types:
-    try:
-        mod = __import__("plugins." + x)
-        modules[x] = getattr(mod, x)
-        print ("Successfully imported ", x, '.')
-    except ImportError:
-        print ("Error importing ", x, '.')
-
-# dev = modules["SolarLink"].Util()
-# print(dev)
-
-dev_services_list = []
-dev_notify_list = []
-dev_services_write_list = []
-dev_write_list = []
-
-
-
-for m in modules:
-    print(m)
-    dev_services_list.append(getattr(modules[m].Config, "NOTIFY_SERVICE_UUID", None))
-    dev_notify_list.append(getattr(modules[m].Config, "NOTIFY_CHAR_UUID", None))
-    dev_services_write_list.append(getattr(modules[m].Config, "WRITE_SERVICE_UUID", None))
-    dev_write_list.append(getattr(modules[m].Config, "WRITE_CHAR_UUID", None))
-print(dev_services_list)
-print(dev_notify_list)
-print(dev_services_write_list)
-print(dev_write_list)
 
 
 
