@@ -85,10 +85,34 @@ class DataLoggerMqtt():
         }
         if var == "temperature":
             val['device_class'] = "temperature"
-        if var == "power":
+        elif var == "power":
             val['device_class'] = "power"
-        if var == "soc":
+        elif var == "soc":
             val['device_class'] = "battery"
+        elif var == "charge_cycles":
+            val['icon'] = "mdi:recycle"
+        elif var == "health":
+            val['icon'] = "mdi:heart-flash"
+        elif var == "voltage":
+            val['icon'] = "mdi:flash"
+            val['unit_of_measurement'] = "V"
+        elif var == "current":
+            val['icon'] = "mdi:current-dc"
+            val['unit_of_measurement'] = "A"
+        elif "_voltage" in var:
+            val['icon'] = "mdi:flash"
+            val['unit_of_measurement'] = "V"
+        elif "_current" in var:
+            val['icon'] = "mdi:current-dc"
+            val['unit_of_measurement'] = "A"
+        elif "battery" in device:
+            val['icon'] = "mdi:battery"
+        elif "regulator" in device:
+            val['icon'] = "mdi:solar-power"
+        elif "inverter" in device:
+            val['icon'] = "mdi:current-ac"
+        elif "rectifier" in device:
+            val['icon'] = "mdi:current-ac"
 
         ret = self.client.publish(ha_topic, json.dumps(val), retain=True)
 
