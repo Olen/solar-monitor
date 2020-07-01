@@ -754,6 +754,12 @@ class BatteryDevice(PowerDevice):
         logging.debug("New BatteryDevice")
         self._health = None
         self._state = None
+        self._mcurrent = {
+            'val': 0,
+            'min': -30000,
+            'max': 30000,
+            'maxdiff': 10000
+        }
         self._charge_cycles = {
             'val': 0,
             'min': 0,
