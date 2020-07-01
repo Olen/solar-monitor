@@ -48,7 +48,8 @@ class SolarDevice(gatt.Device):
         self.util = None
         self.type = None
         self.module = None
-        self.device_write_characteristic = None
+        self.device_write_characteristic_polling = None
+        self.device_write_characteristic_commands = None
         self.datalogger = datalogger
         if config:
             self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
@@ -69,7 +70,8 @@ class SolarDevice(gatt.Device):
         self.service_notify = getattr(self.module.Config, "NOTIFY_SERVICE_UUID", None)
         self.service_write = getattr(self.module.Config, "WRITE_SERVICE_UUID", None)
         self.char_notify = getattr(self.module.Config, "NOTIFY_CHAR_UUID", None)
-        self.char_write = getattr(self.module.Config, "WRITE_CHAR_UUID", None)
+        self.char_write_polling = getattr(self.module.Config, "WRITE_CHAR_UUID_POLLING", None)
+        self.char_write_commands = getattr(self.module.Config, "WRITE_CHAR_UUID_COMMANDS", None)
         self.device_id = getattr(self.module.Config, "DEVICE_ID", None)
         self.need_polling = getattr(self.module.Config, "NEED_POLLING", None)
         self.send_ack = getattr(self.module.Config, "SEND_ACK", None)
@@ -133,16 +135,18 @@ class SolarDevice(gatt.Device):
 
         if device_notification_service:
             for c in device_notification_service.characteristics:
-                if self.char_notify and c.uuid == self.char_notify:
+                if self.char_notify and c.uuid in self.char_notify:
                     logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, c.uuid))
                     logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
                     c.enable_notifications()
         if device_write_service:
             for c in device_write_service.characteristics:
-                if self.char_write and c.uuid == self.char_write:
-                    logging.info("[{}] Found dev write char [{}]".format(self.logger_name, c.uuid))
-                    logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
-                    self.device_write_characteristic = c
+                if self.char_write_polling and c.uuid == self.char_write_polling:
+                    logging.info("[{}] Found dev write polling char [{}]".format(self.logger_name, c.uuid))
+                    self.device_write_characteristic_polling = c
+                if self.char_write_commands and c.uuid == self.char_write_commands:
+                    logging.info("[{}] Found dev write polling char [{}]".format(self.logger_name, c.uuid))
+                    self.device_write_characteristic_commands = c
 
 
         if self.need_polling:
@@ -152,7 +156,7 @@ class SolarDevice(gatt.Device):
             t1.start()
 
         # We only need and MQTT-poller thread if we have a write characteristic to send data to
-        if self.char_write:
+        if self.char_write_commands:
             trigger = threading.Event()
             self.datalogger.mqtt.trigger = trigger
             t2 = threading.Thread(target=self.mqtt_poller, args=(trigger,))
@@ -174,7 +178,7 @@ class SolarDevice(gatt.Device):
             data = self.util.ackData(value)
             self.characteristic_write_value(data)
 
-        if self.util.notificationUpdate(value):
+        if self.util.notificationUpdate(value, characteristic.uuid):
             # We received some new data. Lets push it to the datalogger
             items = ['current', 'input_current', 'charge_current',
                      'voltage', 'input_voltage', 'charge_voltage',
@@ -211,13 +215,10 @@ class SolarDevice(gatt.Device):
         logging.warning("[{}] Enabling notifications failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
 
 
-    def characteristic_write_value(self, value):
-        if self.device_write_characteristic:
-            logging.debug("[{}] Writing data to {} - {} ({})".format(self.logger_name, self.device_write_characteristic.uuid, value, bytearray(value).hex()))
-            self.writing = value
-            self.device_write_characteristic.write_value(value)
-        else:
-            logging.warning("[{}] No write characteristic created".format(self.logger_name))
+    def characteristic_write_value(self, value, write_characteristic):
+        logging.debug("[{}] Writing data to {} - {} ({})".format(self.logger_name, write_characteristic.uuid, value, bytearray(value).hex()))
+        self.writing = value
+        write_characteristic.write_value(value)
 
     def characteristic_write_value_succeeded(self, characteristic):
         super().characteristic_write_value_succeeded(characteristic)
@@ -229,7 +230,7 @@ class SolarDevice(gatt.Device):
         logging.warning("[{}] Write to characteristic failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
         if error == "In Progress" and self.writing is not False:
             time.sleep(0.1)
-            self.characteristic_write_value(self.writing)
+            self.characteristic_write_value(self.writing, characteristic)
         else:
             self.writing = False
 
@@ -244,7 +245,7 @@ class SolarDevice(gatt.Device):
             logging.debug("[{}] Looping thread {}".format(self.logger_name, threading.current_thread().name))
             data = self.util.pollRequest()
             if data:
-                self.characteristic_write_value(data)
+                self.characteristic_write_value(data, self.device_write_characteristic_polling)
             time.sleep(1)
 
     def mqtt_poller(self, trigger):
@@ -270,7 +271,7 @@ class SolarDevice(gatt.Device):
                 if len(datas) > 0:
                     for data in datas:
                         logging.debug("[{}] Sending data to device: {}".format(self.logger_name, data))
-                        self.characteristic_write_value(data)
+                        self.characteristic_write_value(data, self.device_write_characteristic_commands)
                         time.sleep(0.2)
                 else:
                     logging.debug("[{}] Unknown MQTT-command {} -> {}".format(self.logger_name, var, message))

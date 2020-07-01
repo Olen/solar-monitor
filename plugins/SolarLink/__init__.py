@@ -7,7 +7,8 @@ class Config():
     NOTIFY_SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb"
     NOTIFY_CHAR_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
     WRITE_SERVICE_UUID = "0000ffd0-0000-1000-8000-00805f9b34fb"
-    WRITE_CHAR_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
+    WRITE_CHAR_UUID_POLLING  = "0000ffd1-0000-1000-8000-00805f9b34fb"
+    WRITE_CHAR_UUID_COMMANDS = "0000ffd1-0000-1000-8000-00805f9b34fb"
     SEND_ACK  = True
     NEED_POLLING = True
     DEVICE_ID = 255
@@ -49,7 +50,7 @@ class Util():
         self.poll_data = None
         self.poll_register = None
 
-    def notificationUpdate(self, value):
+    def notificationUpdate(self, value, char):
         '''
         Fortunately we read a different number of bytes from each register, so we can 
         abuse the "length" field (byte #3 in the response) as an "id"
