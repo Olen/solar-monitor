@@ -54,7 +54,7 @@ class DataLoggerMqtt():
                 # time.sleep(2)
                 self.create_sensor(device, var)
             self.sensors.append(topic)
-            time.sleep(1)
+            time.sleep(0.5)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         ret = self.client.publish(topic, val, retain=True)
 
@@ -78,33 +78,27 @@ class DataLoggerMqtt():
         logging.debug("Creating MQTT-sensor {}".format(topic))
         ha_topic = "homeassistant/sensor/{}/{}/config".format(device, var)
         val = {
-                "name": "{} {} {}".format(self.prefix[:-1].capitalize(), device.replace("_", " ").title(), var.replace("_", " ").title()),
+            "name": "{} {} {}".format(self.prefix[:-1].capitalize(), device.replace("_", " ").title(), var.replace("_", " ").title()),
             "unique_id": "{}_{}_{}".format(self.prefix[:-1], device, var),
             "state_topic": topic,
             "force_update": True,
         }
         if var == "temperature":
             val['device_class'] = "temperature"
-        elif var == "power":
-            val['device_class'] = "power"
         elif var == "soc":
             val['device_class'] = "battery"
+        elif var == "power" or var == "charge_power" or var == "input_power":
+            val['device_class'] = "power"
+        elif var == "voltage" or var == "charge_voltage" or var == "input_voltage":
+            val['icon'] = "mdi:flash"
+            val['unit_of_measurement'] = "V"
+        elif var == "current" or var == "charge_current" or var == "input_current":
+            val['icon'] = "mdi:current-dc"
+            val['unit_of_measurement'] = "A"
         elif var == "charge_cycles":
             val['icon'] = "mdi:recycle"
         elif var == "health":
             val['icon'] = "mdi:heart-flash"
-        elif var == "voltage":
-            val['icon'] = "mdi:flash"
-            val['unit_of_measurement'] = "V"
-        elif var == "current":
-            val['icon'] = "mdi:current-dc"
-            val['unit_of_measurement'] = "A"
-        elif "_voltage" in var:
-            val['icon'] = "mdi:flash"
-            val['unit_of_measurement'] = "V"
-        elif "_current" in var:
-            val['icon'] = "mdi:current-dc"
-            val['unit_of_measurement'] = "A"
         elif "battery" in device:
             val['icon'] = "mdi:battery"
         elif "regulator" in device:

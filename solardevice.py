@@ -202,7 +202,7 @@ class SolarDevice(gatt.Device):
 
         if self.send_ack:
             data = self.util.ackData(value)
-            self.characteristic_write_value(data)
+            self.characteristic_write_value(data, self.device_write_characteristic_polling)
 
         if self.util.notificationUpdate(value, characteristic.uuid):
             # We received some new data. Lets push it to the datalogger
