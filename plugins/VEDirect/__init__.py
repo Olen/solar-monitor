@@ -146,9 +146,9 @@ class Util():
             self._char_buffer = self._char_buffer + value[:]
         if len(self._char_buffer) > 20:
             i = 0
-            while i + 8 <= len(self._char_buffer[char]):
+            while i + 8 <= len(self._char_buffer):
                 val = self._char_buffer[i:i+8]
-                self.set_values(char, val)
+                self.set_values(val)
                 i = i + 8
             self._char_buffer = b""
 

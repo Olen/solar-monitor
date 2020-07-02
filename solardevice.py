@@ -51,6 +51,11 @@ class SolarDevice(gatt.Device):
         self.device_write_characteristic_polling = None
         self.device_write_characteristic_commands = None
         self.datalogger = datalogger
+        self.run_device_poller = False
+        self.poller_thread = None
+        self.run_command_poller = False
+        self.command_thread = None
+        self.command_trigger = None
         if config:
             self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
             self.type = config.get(logger_name, 'type', fallback=None)
@@ -87,11 +92,13 @@ class SolarDevice(gatt.Device):
         else:
             self.entities = PowerDevice(parent=self)
 
-        self.util = self.module.Util(self)  
 
 
     def alias(self):
-        return super().alias().strip()
+        alias = super().alias()
+        if alias:
+            return alias.strip()
+        return None
 
     def connect(self):
         logging.info("[{}] Connecting to {}".format(self.logger_name, self.mac_address))
@@ -104,11 +111,29 @@ class SolarDevice(gatt.Device):
     def connect_failed(self, error):
         super().connect_failed(error)
         logging.info("[{}] Connection failed: {}".format(self.logger_name, str(error)))
-        raise ConnectionError()
+        if self.poller_thread:
+            self.run_device_poller = False
+            logging.info("[{}] Stopping poller-thread".format(self.logger_name))
+        if self.command_thread:
+            logging.info("[{}] Stopping command-thread".format(self.logger_name))
+            self.run_command_poller = False
+            self.command_trigger.set()
+        if self.auto_reconnect:
+            logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
+            time.sleep(10)
+            self.connect()
+
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
         logging.info("[{}] Disconnected".format(self.logger_name))
+        if self.poller_thread:
+            self.run_device_poller = False
+            logging.info("[{}] Stopping poller-thread".format(self.logger_name))
+        if self.command_thread:
+            logging.info("[{}] Stopping command-thread".format(self.logger_name))
+            self.run_command_poller = False
+            self.command_trigger.set()
         if self.auto_reconnect:
             logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
             time.sleep(10)
@@ -118,6 +143,7 @@ class SolarDevice(gatt.Device):
         super().services_resolved()
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
+        self.util = self.module.Util(self)  
 
         device_notification_service = None
         device_write_service = None
@@ -150,19 +176,19 @@ class SolarDevice(gatt.Device):
 
 
         if self.need_polling:
-            t1 = threading.Thread(target=self.device_poller)
-            t1.daemon = True 
-            t1.name = "Device-poller-thread {}".format(self.logger_name)
-            t1.start()
+            self.poller_thread = threading.Thread(target=self.device_poller)
+            self.poller_thread.daemon = True 
+            self.poller_thread.name = "Device-poller-thread {}".format(self.logger_name)
+            self.poller_thread.start()
 
         # We only need and MQTT-poller thread if we have a write characteristic to send data to
         if self.char_write_commands:
-            trigger = threading.Event()
-            self.datalogger.mqtt.trigger = trigger
-            t2 = threading.Thread(target=self.mqtt_poller, args=(trigger,))
-            t2.daemon = True 
-            t2.name = "MQTT-poller-thread {}".format(self.logger_name)
-            t2.start()
+            self.command_trigger = threading.Event()
+            self.datalogger.mqtt.trigger = self.command_trigger
+            self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
+            self.command_thread.daemon = True 
+            self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
+            self.command_thread.start()
 
 
 
@@ -240,18 +266,22 @@ class SolarDevice(gatt.Device):
 
     def device_poller(self):
         # Loop every second - the device plugin is responsible for not overloading the device with requests
-        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
-        while True:
+        logging.info("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
+        self.run_device_poller = True
+        while self.run_device_poller:
             logging.debug("[{}] Looping thread {}".format(self.logger_name, threading.current_thread().name))
             data = self.util.pollRequest()
             if data:
                 self.characteristic_write_value(data, self.device_write_characteristic_polling)
             time.sleep(1)
+        logging.info("[{}] Ending thread {}".format(self.logger_name, threading.current_thread().name))
+
 
     def mqtt_poller(self, trigger):
         # Loop to fetch MQTT-commands
-        logging.debug("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
-        while True:
+        logging.info("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
+        self.run_command_poller = True
+        while self.run_command_poller:
             mqtt_sets = []
             datas = []
             logging.debug("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
@@ -275,6 +305,7 @@ class SolarDevice(gatt.Device):
                         time.sleep(0.2)
                 else:
                     logging.debug("[{}] Unknown MQTT-command {} -> {}".format(self.logger_name, var, message))
+        logging.info("[{}] Ending thread {}".format(self.logger_name, threading.current_thread().name))
 
 
 class PowerDevice():
