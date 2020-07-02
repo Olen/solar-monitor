@@ -791,6 +791,12 @@ class BatteryDevice(PowerDevice):
             'max': 30000,
             'maxdiff': 10000
         }
+        self._mvoltage = {
+            'val': 0,
+            'min': 10000,
+            'max': 15000,
+            'maxdiff': 12000
+        }
         self._charge_cycles = {
             'val': 0,
             'min': 0,
