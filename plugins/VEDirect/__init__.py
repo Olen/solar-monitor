@@ -56,7 +56,7 @@ class Util():
         cmd = None
         datas = []
         logging.debug("{} {} => {}".format('cmdRequest', command, value))
-        if command == 'power_switch_state':
+        if command == 'power_switch':
             if int(value) == 0:
                 cmd = 'PowerOff'
             elif int(value) == 1:
@@ -78,7 +78,8 @@ class Util():
         if cmd == 'PollData':
             val = 'f941'
         if cmd == 'PowerOn':
-            val = "0603821902004102"
+            val = "0603821902004105"        # Eco instead of "on"
+            # val = "0603821902004102"
         if cmd == 'PowerOff':
             val = "0603821902004104"
         if cmd == 'PowerEco':
@@ -164,19 +165,23 @@ class Util():
                 if self.PowerDevice.entities.voltage < 1:
                     self.PowerDevice.entities.voltage = 0
                 if pval > 10000:
-                    self.PowerDevice.entities.power_switch_state = 1
+                    self.PowerDevice.entities.power_switch = 1
                 else:
-                    self.PowerDevice.entities.power_switch_state = 0
+                    self.PowerDevice.entities.power_switch = 0
             elif ptype == 36333:
                 logging.debug("Input voltage: {} V".format(pval * 0.01))
                 self.PowerDevice.entities.input_voltage = pval * 0.01
             elif ptype == 290:
                 if pval == 0:
                     logging.debug("Output Power turned off")
-                    self.PowerDevice.entities.power_switch_state = 0
+                    self.PowerDevice.entities.power_switch = 0
+                    self.PowerDevice.entities.current = 0
                 elif pval == 65534:
                     logging.debug("Output Power turned on")
-                    self.PowerDevice.entities.power_switch_state = 1
+                    self.PowerDevice.entities.power_switch = 1
+                elif pval == 65533:
+                    logging.debug("Output Power ended")
+                    self.PowerDevice.entities.current = 0
                 else:
                     logging.debug("Current: {} A".format(pval * 0.1))
                     self.PowerDevice.entities.current = pval * 0.1
@@ -189,20 +194,20 @@ class Util():
             if ptype == 0:
                 if pval == 2:
                     logging.debug("Output Power turned on")
-                    self.PowerDevice.entities.power_switch_state = 1
+                    self.PowerDevice.entities.power_switch = 1
                 if pval == 4:
                     logging.debug("Output Power turned off")
-                    self.PowerDevice.entities.power_switch_state = 0
+                    self.PowerDevice.entities.power_switch = 0
                 if pval == 5:
                     logging.debug("Output Power turned to eco - setting switch to on")
-                    self.PowerDevice.entities.power_switch_state = 1
+                    self.PowerDevice.entities.power_switch = 1
             if ptype == 1:
                 if pval == 0:
                     logging.debug("Output Power state turned off")
-                    self.PowerDevice.entities.power_switch_state = 0
+                    self.PowerDevice.entities.power_switch = 0
                 if pval == 1:
                     logging.debug("Output Power state turned to eco")
-                    self.PowerDevice.entities.power_switch_state = 1
+                    self.PowerDevice.entities.power_switch = 1
                 if pval == 9:
                     logging.debug("Output Power state turned on")
-                    self.PowerDevice.entities.power_switch_state = 1
+                    self.PowerDevice.entities.power_switch = 1

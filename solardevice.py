@@ -209,7 +209,7 @@ class SolarDevice(gatt.Device):
             items = ['current', 'input_current', 'charge_current',
                      'voltage', 'input_voltage', 'charge_voltage',
                      'power',   'input_power',   'charge_power',
-                     'soc', 'capacity', 'charge_cycles', 'state', 'health', 'power_switch_state'
+                     'soc', 'capacity', 'charge_cycles', 'state', 'health', 'power_switch'
                     ]
             for item in items:
                 try:
@@ -320,7 +320,7 @@ class PowerDevice():
         logging.debug("New PowerDevice")
         self._parent = parent
         self._cell_mvoltage = {}
-        self._power_switch_state = 0
+        self._power_switch = 0
         self._dsoc = {
             'val': 0,
             'min': 1,
@@ -639,19 +639,19 @@ class PowerDevice():
 
 
     @property
-    def power_switch_state(self):
-        return self._power_switch_state
+    def power_switch(self):
+        return self._power_switch
 
-    @power_switch_state.setter
-    def power_switch_state(self, value):
+    @power_switch.setter
+    def power_switch(self, value):
         if str(value).lower() == "on":
             value = 1
         if str(value).lower() == "off":
             value = 0
-        if value != self._power_switch_state:
-            self._power_switch_state = value
+        if value != self._power_switch:
+            self._power_switch = value
             try:
-                self.datalogger.log(self.logger_name, 'power_switch_state', self.power_switch_state)
+                self.datalogger.log(self.logger_name, 'power_switch', self.power_switch)
             except:
                 pass
 
@@ -718,7 +718,6 @@ class InverterDevice(PowerDevice):
             'max': 250000,
             'maxdiff': 250000
         }
-        self._power_switch_state = 0
 
 
 class RectifierDevice(PowerDevice):
@@ -741,7 +740,6 @@ class RectifierDevice(PowerDevice):
             'max': 50000,
             'maxdiff': 50000
         }
-        self._power_switch_state = 0
 
 
 class RegulatorDevice(PowerDevice):
@@ -787,9 +785,9 @@ class BatteryDevice(PowerDevice):
         self._state = None
         self._mcurrent = {
             'val': 0,
-            'min': -30000,
-            'max': 30000,
-            'maxdiff': 10000
+            'min': -500000,
+            'max': 500000,
+            'maxdiff': 100000
         }
         self._mvoltage = {
             'val': 0,

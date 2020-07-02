@@ -109,7 +109,7 @@ class Util():
         cmd = None
         datas = []
         logging.debug("{} {} => {}".format('cmdRequest', command, value))
-        if command == 'power_switch_state':
+        if command == 'power_switch'
             if int(value) == 0:
                 cmd = 'RegulatorPowerOff'
             elif int(value) == 1:
@@ -157,7 +157,7 @@ class Util():
         logging.debug("mChargingPower {} {} => {}".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2)))
         self.PowerDevice.entities.input_power = self.Bytes2Int(bs, 7, 2)
         logging.debug("mSwitch {} {} => {}".format(int(bs[9]), int(bs[10]), self.Bytes2Int(bs, 9, 2)))
-        self.PowerDevice.entities.power_switch_state = self.Bytes2Int(bs, 9, 2)
+        self.PowerDevice.entities.power_switch = self.Bytes2Int(bs, 9, 2)
         logging.debug("mUnkown {} {} => {}".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2)))
 
 
