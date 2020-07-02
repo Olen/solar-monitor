@@ -109,7 +109,7 @@ class Util():
         cmd = None
         datas = []
         logging.debug("{} {} => {}".format('cmdRequest', command, value))
-        if command == 'power_switch'
+        if command == 'power_switch':
             if int(value) == 0:
                 cmd = 'RegulatorPowerOff'
             elif int(value) == 1:
