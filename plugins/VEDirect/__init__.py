@@ -166,21 +166,22 @@ class Util():
                     self.PowerDevice.entities.voltage = 0
                 if pval > 10000:
                     self.PowerDevice.entities.power_switch = 1
-                else:
-                    self.PowerDevice.entities.power_switch = 0
+                # else:
+                #     self.PowerDevice.entities.power_switch = 0
             elif ptype == 36333:
                 logging.debug("Input voltage: {} V".format(pval * 0.01))
                 self.PowerDevice.entities.input_voltage = pval * 0.01
             elif ptype == 290:
                 if pval == 0:
-                    logging.debug("Output Power turned off")
-                    self.PowerDevice.entities.power_switch = 0
+                    # logging.info("Output Power turned off #1")
+                    logging.info("No output current")
                     self.PowerDevice.entities.current = 0
                 elif pval == 65534:
-                    logging.debug("Output Power turned on")
+                    logging.info("Output Power turned on #1")
                     self.PowerDevice.entities.power_switch = 1
                 elif pval == 65533:
-                    logging.debug("Output Power ended")
+                    # logging.info("Output Power ended")
+                    logging.info("Checking output current")
                     self.PowerDevice.entities.current = 0
                 else:
                     logging.debug("Current: {} A".format(pval * 0.1))
@@ -193,21 +194,21 @@ class Util():
             state = "?"
             if ptype == 0:
                 if pval == 2:
-                    logging.debug("Output Power turned on")
+                    logging.info("Output Power turned on ptype 0 pval 2")
                     self.PowerDevice.entities.power_switch = 1
                 if pval == 4:
-                    logging.debug("Output Power turned off")
+                    logging.info("Output Power turned off ptype 0 pval 4")
                     self.PowerDevice.entities.power_switch = 0
                 if pval == 5:
-                    logging.debug("Output Power turned to eco - setting switch to on")
+                    logging.info("Output Power turned to eco - setting switch to on ptype 0 pval 5")
                     self.PowerDevice.entities.power_switch = 1
             if ptype == 1:
                 if pval == 0:
-                    logging.debug("Output Power state turned off")
+                    logging.info("Output Power state turned off ptype 1 pval 0")
                     self.PowerDevice.entities.power_switch = 0
                 if pval == 1:
-                    logging.debug("Output Power state turned to eco")
+                    logging.info("Output Power state turned to eco ptype 1 pval 1")
                     self.PowerDevice.entities.power_switch = 1
                 if pval == 9:
-                    logging.debug("Output Power state turned on")
+                    logging.info("Output Power state turned on ptype 1 pval 9")
                     self.PowerDevice.entities.power_switch = 1
