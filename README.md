@@ -5,11 +5,12 @@ This utility monitors defined BLE-devices, and sends parsed data to a remote ser
 Currently supported
 - SRNE regulators (monitored by the SolarLink APP: https://play.google.com/store/apps/details?id=com.shuorigf
 - Lithium Batteries (monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
-- Victron Energy - VE.Direct devices - currently not completed. Work in progress
+- Victron Energy - VE.Direct devices - currently only Phoenix inverters are tested.  Work in progress to add more devices
 
 
 # Requirements
 Look at requirements.txt
+
 Be aware that libscrc is NOT pip-installable on RPI, so you need to build it from source: https://github.com/hex-in/libscrc
 
 The monitor runs fine on a Raspberry Pi 4, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
