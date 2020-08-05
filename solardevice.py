@@ -184,7 +184,7 @@ class SolarDevice(gatt.Device):
         # We only need and MQTT-poller thread if we have a write characteristic to send data to
         if self.char_write_commands:
             self.command_trigger = threading.Event()
-            self.datalogger.mqtt.trigger = self.command_trigger
+            self.datalogger.mqtt.trigger[self.logger_name] = self.command_trigger
             self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
             self.command_thread.daemon = True 
             self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
@@ -284,19 +284,20 @@ class SolarDevice(gatt.Device):
         while self.run_command_poller:
             mqtt_sets = []
             datas = []
-            logging.debug("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
+            logging.info("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
             trigger.wait()
-            logging.debug("[{}] {} Event happened...".format(self.logger_name, threading.current_thread().name))
+            logging.info("[{}] {} Event happened...".format(self.logger_name, threading.current_thread().name))
             trigger.clear()
             try:
                 mqtt_sets = self.datalogger.mqtt.sets[self.logger_name]
                 self.datalogger.mqtt.sets[self.logger_name] = []
             except Exception as e:
+                logging.error("[{}] {} Something bad happened: {}".format(self.logger_name, threading.current_thread().name, e))
                 pass
             for msg in mqtt_sets:
                 var = msg[0]
                 message = msg[1]
-                logging.debug("[{}] MQTT-msg: {} -> {}".format(self.logger_name, var, message))
+                logging.info("[{}] MQTT-msg: {} -> {}".format(self.logger_name, var, message))
                 datas = self.util.cmdRequest(var, message)
                 if len(datas) > 0:
                     for data in datas:

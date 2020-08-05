@@ -103,6 +103,8 @@ try:
 except KeyboardInterrupt:
     pass
 
+for dev in device_manager.devices():
+    device.disconnect()
 
 
 
