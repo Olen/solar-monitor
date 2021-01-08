@@ -10,12 +10,15 @@ import socket
 
 
 class DataLoggerMqtt():
-    def __init__(self, broker, port, prefix=None):
+    def __init__(self, broker, port, prefix=None, username=None, password=None):
         logging.debug("Creating new MQTT-logger")
         if prefix == None:
             prefix = "solar-monitor"
         self.broker = broker
         self.client = paho.Client("{}".format(socket.gethostname()))        #  create client object
+        if username and password:
+            self.client.username_pw_set(username=username,password=password)
+
         self.client.on_publish = self.on_publish                            # assign function to callback
         self.client.on_message = self.on_message                            # attach function to callback
         self.client.on_subscribe = self.on_subscribe                        # attach function to callback
@@ -50,8 +53,8 @@ class DataLoggerMqtt():
                 self.create_switch(device, var)
                 self.create_listener(device, var)
             else:
-                # self.delete_sensor(device, var)
-                # time.sleep(2)
+                self.delete_sensor(device, var)
+                time.sleep(2)
                 self.create_sensor(device, var)
             self.sensors.append(topic)
             time.sleep(0.5)
@@ -85,10 +88,13 @@ class DataLoggerMqtt():
         }
         if var == "temperature":
             val['device_class'] = "temperature"
+            val['unit_of_measurement'] = "°C"
         elif var == "soc":
             val['device_class'] = "battery"
+            val['unit_of_measurement'] = "%"
         elif var == "power" or var == "charge_power" or var == "input_power":
             val['device_class'] = "power"
+            val['unit_of_measurement'] = "W"
         elif var == "voltage" or var == "charge_voltage" or var == "input_voltage":
             val['icon'] = "mdi:flash"
             val['unit_of_measurement'] = "V"
@@ -166,7 +172,7 @@ class DataLogger():
             self.url = config.get('datalogger', 'url')
             self.token = config.get('datalogger', 'token')
         if config.get('mqtt', 'broker', fallback=None):
-            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'))
+            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'), username=config.get('mqtt', 'username'), password=config.get('mqtt', 'password'))
         self.logdata = {}
 
        
@@ -218,5 +224,6 @@ class DataLogger():
                 response = requests.post(url=self.url, json=payload, headers=header)
             except TimeoutError:
                 logging.error("Connection to {} timed out!".format(self.url))
+
 
 
