@@ -20,7 +20,7 @@ class Config():
 
 class Util():
     '''
-    Class for reading and parsing data from various SpartPower-BLE-streams
+    Class for reading and parsing data from various SmartPower-BLE-streams
     '''
 
     def __init__(self, power_device):
