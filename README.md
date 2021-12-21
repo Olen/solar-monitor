@@ -13,7 +13,7 @@ Look at requirements.txt
 
 Be aware that libscrc is NOT pip-installable on RPI, so you need to build it from source: https://github.com/hex-in/libscrc
 
-The monitor runs fine on a Raspberry Pi 4, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
+The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
 
 
 
