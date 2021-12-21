@@ -15,6 +15,33 @@ class Config():
 
 
 class Util():
+    # https://community.victronenergy.com/storage/attachments/2273-vecan-registers-public.pdf
+    VREG_COMMANDS = {
+        'VREC': 0x0001,
+        'VACK': 0x0002,
+        'VPING': 0x0003,
+        'DEFAULTS': 0x0004,
+    }
+    # All ints are unsigned
+    VREG_RESPONSES = {
+        'ProductID': { 'key': 0x0100, 'format': { 'id': 'un8', 'prodid': 'un16', 'flags': 'un8'}},
+        'Revision': { 'key': 0x0101, 'format': { 'id': 'un8', 'revision': 'un16'}},
+        'FwVersion': { 'key': 0x0102, 'format': { 'id': 'un8', 'fw': 'un24'}},
+        'MinVersion': { 'key': 0x0103, 'format': { 'id': 'un8', 'fw': 'un24'}},
+        'GroupID': { 'key': 0x0104, 'format': { 'groupid': 'un8'}},
+        'HwRevision': { 'key': 0x0105, 'format': { 'hwrev': 'un8'}},
+        'SerialNumber': { 'key': 0x010a, 'format': { 'serial': 'string32' }},
+        'ModelName': { 'key': 0x010b, 'format': { 'model': 'string32' }},
+        'Description1': { 'key': 0x010c, 'format': { 'model': 'string' }},
+        'Description2': { 'key': 0x010d, 'format': { 'model': 'string' }},
+        'Identify': { 'key': 0x010e, 'format': { 'identify': 'un8'}},
+        'UdfVersion': { 'key': 0x0110, 'format': { 'version': 'un24', 'flags': 'un8' }},
+        'Uptime': { 'key': 0x0120, 'format': { 'uptime': 'un32'}},
+        'CanHwOverflows': { 'key': 0x0130, 'format': { 'overflows': 'un32'}},
+        'CanSwOverflows': { 'key': 0x0131, 'format': { 'overflows': 'un32'}},
+        'CanErrors': { 'key': 0x0132, 'format': { 'errors': 'un32'}},
+        'CanBusOff': { 'key': 0x0133, 'format': { 'bussoff': 'un32'}},
+    }
 
     def __init__(self, power_device):                  
         self.PowerDevice = power_device
