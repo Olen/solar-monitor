@@ -113,7 +113,7 @@ class Util():
             if int(value) == 0:
                 cmd = 'RegulatorPowerOff'
             elif int(value) == 1:
-                cmd = 'RegulatorPowerOn'  
+                cmd = 'RegulatorPowerOn'
         if cmd:
             datas.append(self.create_poll_request(cmd))
             datas.append(self.create_poll_request('SolarPanelInfo'))
@@ -271,7 +271,8 @@ class Util():
             return False
 
 
-        crc = libscrc.modbus(bytearray(bs[:-2]))
+        # crc = libscrc.modbus(bytearray(bs[:-2]))
+        crc = libscrc.modbus(bytes(bs[:-2]))
         check = self.Bytes2Int(bs, offset=len(bs)-1, length=-2)
         if crc == check:
             return True
@@ -316,7 +317,8 @@ class Util():
             data.append(self.Int2Bytes(readWrd, 0))
             data.append(self.Int2Bytes(readWrd, 1))
 
-            crc = libscrc.modbus(bytearray(data))
+            # crc = libscrc.modbus(bytearray(data))
+            crc = libscrc.modbus(bytes(data))
             data.append(self.Int2Bytes(crc, 1))
             data.append(self.Int2Bytes(crc, 0))
             logging.debug("{} {} => {}".format("create_poll_request", cmd, data))

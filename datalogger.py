@@ -10,12 +10,14 @@ import socket
 
 
 class DataLoggerMqtt():
-    def __init__(self, broker, port, prefix=None, username=None, password=None):
+    def __init__(self, broker, port, prefix=None, username=None, password=None, hostname=None):
         logging.debug("Creating new MQTT-logger")
         if prefix == None:
             prefix = "solar-monitor"
         self.broker = broker
-        self.client = paho.Client("{}".format(socket.gethostname()))        #  create client object
+        if not hostname:
+            hostname = socket.gethostname()
+        self.client = paho.Client("{}".format(hostname))        #  create client object
         if username and password:
             self.client.username_pw_set(username=username,password=password)
 
@@ -160,6 +162,13 @@ class DataLoggerMqtt():
         logging.debug("MQTT {}".format(buf))
 
 
+# 2021-07-07 17:46:22,051 INFO    : MQTT message received 1                     
+# 2021-07-07 17:46:22,052 INFO    : MQTT set: {'regulator': [('power_switch', '1')], 'battery_1': [], 'battery_2': [], 'inverter_1': []}                                                                             
+# 2021-07-07 17:46:22,054 INFO    : [regulator] MQTT-poller-thread regulator Event happened...
+# 2021-07-07 17:46:22,055 INFO    : [regulator] MQTT-msg: power_switch -> 1     
+# 2021-07-07 17:46:22,136 INFO    : [battery_2] Sending new data current: -1.4  
+# 2021-07-07 17:46:22,156 INFO    : [inverter_1] Sending new data voltage: 230.0   
+# 2021-07-07 17:46:22,260 WARNING : [regulator] Write to characteristic failed for: [0000ffd1-0000-1000-8000-00805f9b34fb] with error [In Progress]         
 
 
 class DataLogger():
@@ -172,7 +181,7 @@ class DataLogger():
             self.url = config.get('datalogger', 'url')
             self.token = config.get('datalogger', 'token')
         if config.get('mqtt', 'broker', fallback=None):
-            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'), username=config.get('mqtt', 'username'), password=config.get('mqtt', 'password'))
+            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'), username=config.get('mqtt', 'username'), password=config.get('mqtt', 'password'), hostname=config.get('mqtt', 'hostname'))
         self.logdata = {}
 
        

@@ -3,7 +3,7 @@
 from argparse import ArgumentParser
 import configparser
 import time
-import logging 
+import logging
 import sys
 
 from solardevice import SolarDeviceManager, SolarDevice
