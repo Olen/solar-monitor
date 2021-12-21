@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """Duallog
 
+Based on the original https://github.com/acschaefer/duallog
+Contains quite a few fixes and modifications
+
 This module contains a function "setup()" that sets up dual logging. 
 All subsequent log messages are sent both to the console and to a logfile. 
 Log messages are generated via the "logging" package.
