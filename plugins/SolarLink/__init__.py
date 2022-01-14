@@ -136,7 +136,12 @@ class Util():
             temp_celsius = 128 - temp_celsius
         self.PowerDevice.entities.temperature_celsius = temp_celsius
         logging.debug("mDeviceTemperatureCelsius {}".format(self.PowerDevice.entities.temperature_celsius))
+        battery_temp_celsius = self.Bytes2Int(bs, 10, 1)
         logging.debug("mBatteryTemperature {}".format(int(bs[10])))
+        if battery_temp_celsius > 128:
+            battery_temp_celsius = 128 - battery_temp_celsius
+        self.PowerDevice.entities.battery_temperature_celsius = battery_temp_celsius
+        logging.debug("mBatteryTemperatureCelsius {}".format(self.PowerDevice.entities.battery_temperature_celsius))
         logging.debug("mLoadVoltage {} {} => {} V".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2) * 0.1))
         self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 11, 2) * 0.1
         logging.debug("mLoadElectricity {} {} => {} A".format(int(bs[13]), int(bs[14]), self.Bytes2Int(bs, 13, 2) * 0.01))
