@@ -221,7 +221,7 @@ class SolarDevice(gatt.Device):
             # We want celsius, not kelvin
             try:
                 self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
-                self.datalogger.log(self.logger_name, 'temperature', self.entities.battery_temperature_celsius)
+                self.datalogger.log(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius)
                 
             except:
                 pass
