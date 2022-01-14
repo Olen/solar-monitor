@@ -486,7 +486,7 @@ class PowerDevice():
     def battery_temperature(self):
         return self._bkelvin['val']
     @battery_temperature.setter
-    def temperature(self, value):
+    def battery_temperature(self, value):
         self.validate('_bkelvin', value)
 
     @property
