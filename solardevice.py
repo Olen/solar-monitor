@@ -490,7 +490,7 @@ class PowerDevice():
     def temperature_fahrenheit(self, value):
         self.temperature = (value + 459.67) * (5/9) * 10
 
-     @property
+    @property
     def battery_temperature_celsius(self):
         return round((self.temperature - 2731) * 0.1, 1)
     @battery_temperature_celsius.setter
