@@ -39,8 +39,10 @@ url = http://server/solar/api/
 token = 39129e20be0503937cb72a5f719337cc
 
 [mqtt]
-broker = mqtt.server.addr     # Address to the mqtt broker
-prefix = solar                # All topics are prefixed by "prefix/"
-                              # E.g. prefix/battery_1/voltage
+# Address to the mqtt broker
+broker = mqtt.server.addr 
+# All topics are prefixed by this prefix
+# E.g. "solar/battery_1/voltage"
+prefix = solar                
 
 
