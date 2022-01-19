@@ -156,6 +156,8 @@ class Util():
 
 
     def set_values(self, value):
+
+        logging.debug(f"Got packet of len: {len(value)} {value}")
         if len(value) == 8:
             ptype = int.from_bytes(value[3:5], byteorder="little")
             pval  = int.from_bytes(value[6:8], byteorder="little")
@@ -168,6 +170,7 @@ class Util():
                 value[5],
                 value[6],
                 value[7]))
+            logging.debug("ptype {}: pval {}".format(ptype, pval))
             if ptype == 34:
                 logging.debug("Output voltage: {} V".format(pval * 0.01))
                 self.PowerDevice.entities.voltage = pval * 0.01
@@ -180,6 +183,16 @@ class Util():
             elif ptype == 36333:
                 logging.debug("Input voltage: {} V".format(pval * 0.01))
                 self.PowerDevice.entities.input_voltage = pval * 0.01
+            elif ptype == 36845: #current
+                # 2^16 value
+                # negative starts from 2^16
+                # and goes down
+                if pval > 2**16/2: # probably negative
+                    pval = 2**16 - pval
+                    pval *= -1
+                logging.debug("Current: {} A".format(pval * 0.1))
+                self.PowerDevice.entities.current = pval * 0.1
+
             elif ptype == 290:
                 if pval == 0:
                     # logging.info("Output Power turned off #1")

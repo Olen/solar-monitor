@@ -1,0 +1,4 @@
+.vscode/launch.json
+solar-monitor.ini
+solar-monitor.log*
+__pycache__/
