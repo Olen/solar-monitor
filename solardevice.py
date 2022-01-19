@@ -221,6 +221,8 @@ class SolarDevice(gatt.Device):
             # We want celsius, not kelvin
             try:
                 self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
+                self.datalogger.log(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius)
+                
             except:
                 pass
 
@@ -329,6 +331,12 @@ class PowerDevice():
             'maxdiff': 200
         }
         self._dkelvin = {
+            'val': 2731,
+            'min': 1731,
+            'max': 3731,
+            'maxdiff': 20
+        }
+        self._bkelvin = {
             'val': 2731,
             'min': 1731,
             'max': 3731,
@@ -475,6 +483,13 @@ class PowerDevice():
         self.validate('_dkelvin', value)
 
     @property
+    def battery_temperature(self):
+        return self._bkelvin['val']
+    @battery_temperature.setter
+    def battery_temperature(self, value):
+        self.validate('_bkelvin', value)
+
+    @property
     def temperature_celsius(self):
         return round((self.temperature - 2731) * 0.1, 1)
     @temperature_celsius.setter
@@ -488,7 +503,19 @@ class PowerDevice():
     def temperature_fahrenheit(self, value):
         self.temperature = (value + 459.67) * (5/9) * 10
 
+    @property
+    def battery_temperature_celsius(self):
+        return round((self.battery_temperature - 2731) * 0.1, 1)
+    @battery_temperature_celsius.setter
+    def battery_temperature_celsius(self, value):
+        self.battery_temperature = (value * 10) + 2731
 
+    @property
+    def battery_temperature_fahrenheit(self):
+        return round(((self.temperature * 0.18) - 459.67), 1)
+    @battery_temperature_fahrenheit.setter
+    def battery_temperature_fahrenheit(self, value):
+        self.temperature = (value + 459.67) * (5/9) * 10
 
 
     @property
