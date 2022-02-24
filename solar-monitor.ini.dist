@@ -7,6 +7,10 @@ temperature = C
 # F = Farenheit
 
 
+[renogy_battery_1]
+type = RenogyBatt
+mac = 11:11:11:11:11:11
+reconnect = True
 
 [battery_1]
 type = Meritsun

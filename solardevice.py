@@ -82,7 +82,10 @@ class SolarDevice(gatt.Device):
         self.send_ack = getattr(self.module.Config, "SEND_ACK", None)
 
         if "battery" in self.logger_name:
-            self.entities = BatteryDevice(parent=self)
+            if "renogy" in self.logger_name:
+                self.entities = RenogyBatteryDevice(parent=self)
+            else:
+                self.entities = BatteryDevice(parent=self)
         elif "regulator" in self.logger_name:
             self.entities = RegulatorDevice(parent=self)
         elif "inverter" in self.logger_name:
@@ -143,7 +146,7 @@ class SolarDevice(gatt.Device):
         super().services_resolved()
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
-        self.util = self.module.Util(self)  
+        self.util = self.module.Util(self)
 
         device_notification_service = None
         device_write_service = None
@@ -177,7 +180,7 @@ class SolarDevice(gatt.Device):
 
         if self.need_polling:
             self.poller_thread = threading.Thread(target=self.device_poller)
-            self.poller_thread.daemon = True 
+            self.poller_thread.daemon = True
             self.poller_thread.name = "Device-poller-thread {}".format(self.logger_name)
             self.poller_thread.start()
 
@@ -186,7 +189,7 @@ class SolarDevice(gatt.Device):
             self.command_trigger = threading.Event()
             self.datalogger.mqtt.trigger[self.logger_name] = self.command_trigger
             self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
-            self.command_thread.daemon = True 
+            self.command_thread.daemon = True
             self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
             self.command_thread.start()
 
@@ -222,7 +225,7 @@ class SolarDevice(gatt.Device):
             try:
                 self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
                 self.datalogger.log(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius)
-                
+
             except:
                 pass
 
@@ -461,14 +464,14 @@ class PowerDevice():
     def datalogger(self):
         return self.parent.datalogger
 
-    @property 
+    @property
     def dsoc(self):
         return self._dsoc['val']
     @dsoc.setter
     def dsoc(self, value):
         self.validate('_dsoc', value)
 
-    @property 
+    @property
     def soc(self):
         return (self.dsoc / 10)
     @soc.setter
@@ -706,7 +709,7 @@ class PowerDevice():
                 out = "{} {} == {},".format(out, var, self.__dict__[var])
         logging.debug(out)
 
-    
+
     def validate(self, var, val):
         definition = getattr(self, var)
         val = float(val)
@@ -724,7 +727,7 @@ class PowerDevice():
             return False
         logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
         self.__dict__[var]['val'] = val
-        
+
 
 class InverterDevice(PowerDevice):
     '''
@@ -750,7 +753,7 @@ class InverterDevice(PowerDevice):
 
 class RectifierDevice(PowerDevice):
     '''
-    Special class for Rectifier-devices  (AC-DC).  
+    Special class for Rectifier-devices  (AC-DC).
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     def __init__(self, parent=None):
@@ -772,7 +775,7 @@ class RectifierDevice(PowerDevice):
 
 class RegulatorDevice(PowerDevice):
     '''
-    Special class for Regulator-devices.  
+    Special class for Regulator-devices.
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     def __init__(self, parent=None):
@@ -781,8 +784,8 @@ class RegulatorDevice(PowerDevice):
 
 
 
-            
-            
+
+
 
 
     def parse_notification(self, value):
@@ -802,7 +805,7 @@ class RegulatorDevice(PowerDevice):
 
 class BatteryDevice(PowerDevice):
     '''
-    Special class for Battery-devices.  
+    Special class for Battery-devices.
     Extending PowerDevice class with more properties specifically for the batteries
     '''
 
@@ -860,7 +863,7 @@ class BatteryDevice(PowerDevice):
     @property
     def current(self):
         return super().current
-        
+
     @mcurrent.setter
     def mcurrent(self, value):
         super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
@@ -923,4 +926,73 @@ class BatteryDevice(PowerDevice):
             logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
 
 
+class RenogyBatteryDevice(BatteryDevice):
+#    '''
+#    Special class for new Renogy Battery-devices.
+#    Extending PowerDevice class with more properties specifically for the batteries
+#    '''
+#
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        logging.debug("New RenogyBatteryDevice")
+
+        self._mcapacity = {
+            'val': 0,
+            'min': 0,
+            'max': 250000,
+            'maxdiff': 200000
+        }
+        self._mcurrent = {
+            'val': 0,
+            'min': -500000,
+            'max': 500000,
+            'maxdiff': 400000
+        }
+    @property
+    def mcurrent(self):
+        return super().mcurrent
+    @property
+    def current(self):
+        return super().current
+
+    @mcurrent.setter
+    def mcurrent(self, value):
+        super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
+        if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
+            return
+        was = self.state
+        if value > 20:
+            self._state = 'charging'
+        elif value < -20:
+            self._state = 'discharging'
+        else:
+            self._state = 'standby'
+        self.state_changed(was)
+
+    @current.setter
+    def current(self, value):
+        if value > 400:
+            value = value - 655.35
+        super(BatteryDevice, self.__class__).current.fset(self, value)
+        if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
+            return
+        was = self.state
+        if value > 0.02:
+            self._state = 'charging'
+        elif value < -0.02:
+            self._state = 'discharging'
+        else:
+            self._state = 'standby'
+        self.state_changed(was)
+
+    @property
+    def cell_mvoltage(self):
+        return self._cell_mvoltage
+    @cell_mvoltage.setter
+    def cell_mvoltage(self, value):
+        cell = value[0]
+        new_value = value[1]
+        current_value = self._cell_mvoltage[cell]['val']
+        if new_value > 0 and abs(new_value - current_value) > 0:
+            self._cell_mvoltage[cell]['val'] = new_value
 
