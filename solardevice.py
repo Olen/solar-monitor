@@ -926,21 +926,39 @@ class BatteryDevice(PowerDevice):
             logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
 
 
-class RenogyBatteryDevice(BatteryDevice):
+class RenogyBatteryDevice():
 #    '''
 #    Special class for new Renogy Battery-devices.
-#    Extending PowerDevice class with more properties specifically for the batteries
 #    '''
 #
     def __init__(self, parent=None):
-        super().__init__(parent=parent)
         logging.debug("New RenogyBatteryDevice")
-
+        self._parent = parent
+        self._cell_mvoltage = {}
+        self._state = None
+        self._dsoc = {
+            'val': 0,
+            'min': 1,
+            'max': 1000,
+            'maxdiff': 1000
+        }
+        self._dkelvin = {
+            'val': 2731,
+            'min': 1731,
+            'max': 3731,
+            'maxdiff': 20
+        }
         self._mcapacity = {
             'val': 0,
             'min': 0,
             'max': 250000,
             'maxdiff': 200000
+        }
+        self._mvoltage = {
+            'val': 0,
+            'min': 10000,
+            'max': 15000,
+            'maxdiff': 12000
         }
         self._mcurrent = {
             'val': 0,
@@ -948,32 +966,107 @@ class RenogyBatteryDevice(BatteryDevice):
             'max': 500000,
             'maxdiff': 400000
         }
+
+        i = 0
+        while i < 16:
+            i = i + 1
+            self._cell_mvoltage[i] = {
+                'val': 0,
+                'min': 2000,
+                'max': 4000,
+                'maxdiff': 500
+            }
+        self._msg = None
+        self._status = None
+
+    @property
+    def device_id(self):
+        return self._device_id
+    @device_id.setter
+    def device_id(self, value):
+        self._device_id = int(value)
+
+    @property
+    def need_polling(self):
+        return self._need_polling
+
+    @need_polling.setter
+    def need_polling(self, value):
+        if value == True:
+            logging.info("Enabling BLE-polling")
+        self._need_polling = value
+
+    @property
+    def send_ack(self):
+        return self._send_ack
+    @send_ack.setter
+    def send_ack(self, value):
+        self._send_ack = value
+
+    @property
+    def poll_register(self):
+        return self._poll_register
+
+    @poll_register.setter
+    def poll_register(self, value):
+        self._poll_register = value
+
+    @property
+    def parent(self):
+        return self._parent
+
+    @property
+    def name(self):
+        return self.parent.logger_name
+
+    def alias(self):
+        return self.parent.alias()
+
+    @property
+    def datalogger(self):
+        return self.parent.datalogger
+
+    # SOC
+    @property
+    def dsoc(self):
+        return self._dsoc['val']
+    @dsoc.setter
+    def dsoc(self, value):
+        self.validate('_dsoc', value)
+
+    @property
+    def soc(self):
+        return (self.dsoc / 10)
+    @soc.setter
+    def soc(self, value):
+        self.dsoc = value * 10
+
+    # Temperature
+    @property
+    def temperature(self):
+        return self._dkelvin['val']
+    @temperature.setter
+    def temperature(self, value):
+        self.validate('_dkelvin', value)
+
+    # current
     @property
     def mcurrent(self):
-        return super().mcurrent
+        return self._mcurrent['val']
+
     @property
     def current(self):
-        return super().current
+        return round(self.mcurrent / 1000, 1)
 
     @mcurrent.setter
     def mcurrent(self, value):
-        super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
-        if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
-            return
-        was = self.state
-        if value > 20:
-            self._state = 'charging'
-        elif value < -20:
-            self._state = 'discharging'
-        else:
-            self._state = 'standby'
-        self.state_changed(was)
+        self.validate('_mcurrent', value)
 
     @current.setter
     def current(self, value):
         if value > 400:
             value = value - 655.35
-        super(BatteryDevice, self.__class__).current.fset(self, value)
+        self.mcurrent = value * 1000
         if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
             return
         was = self.state
@@ -985,6 +1078,21 @@ class RenogyBatteryDevice(BatteryDevice):
             self._state = 'standby'
         self.state_changed(was)
 
+    # Voltage
+    @property
+    def mvoltage(self):
+        return self._mvoltage['val']
+    @mvoltage.setter
+    def mvoltage(self, value):
+        self.validate('_mvoltage', value)
+
+    @property
+    def voltage(self):
+        return round(self.mvoltage / 1000, 1)
+    @voltage.setter
+    def voltage(self, value):
+        self.mvoltage = value * 1000
+
     @property
     def cell_mvoltage(self):
         return self._cell_mvoltage
@@ -995,4 +1103,60 @@ class RenogyBatteryDevice(BatteryDevice):
         current_value = self._cell_mvoltage[cell]['val']
         if new_value > 0 and abs(new_value - current_value) > 0:
             self._cell_mvoltage[cell]['val'] = new_value
+
+    # capacity
+    @property
+    def mcapacity(self):
+        return self._mcapacity['val']
+    @mcapacity.setter
+    def mcapacity(self, value):
+        self.validate('_mcapacity', value)
+
+    @property
+    def capacity(self):
+        return round(self.mcapacity / 1000, 1)
+    @capacity.setter
+    def capacity(self, value):
+        self.mcapacity = value * 1000
+
+    # state and status
+    @property
+    def state(self):
+        return self._state
+    def state_changed(self, was):
+        if was != self.state:
+            logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'state', was, self.state))
+
+    @property
+    def status(self):
+        return self._status
+    @status.setter
+    def status(self, value):
+        self._status = value
+
+    def dumpAll(self):
+        out = "RAW "
+        for var in self.__dict__:
+            if var != "_msg":
+                out = "{} {} == {},".format(out, var, self.__dict__[var])
+        logging.debug(out)
+
+
+    def validate(self, var, val):
+        definition = getattr(self, var)
+        val = float(val)
+        if val == definition['val']:
+            logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.name, var, definition['val'], val))
+            return False
+        if val > definition['max']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> max {})".format(self.name, var, definition['val'], val, definition['max']))
+            return False
+        if val < definition['min']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.name, var, definition['val'], val, definition['min']))
+            return False
+        if (definition['val'] != 0 and definition['val'] != 2731) and abs(val - definition['val']) > definition['maxdiff']:
+            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, var, definition['val'], val, definition['maxdiff']))
+            return False
+        logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
+        self.__dict__[var]['val'] = val
 

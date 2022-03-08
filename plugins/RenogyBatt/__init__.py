@@ -17,7 +17,7 @@ class Config():
 class Util():
 
     class TotalCapacityState():
-        #this actually grabs model name that contains capacity val
+        # this actually grabs model name that contains capacity val
         REG_ADDR = 2
         READ_WORD = 8
     class VoltageAndCurrentState():
@@ -38,6 +38,7 @@ class Util():
         self.time_int = datetime.now()
         self.param_buffer = b""
         self.param_expect = 0
+        self.volt_change_count = 0
         self.param_data = []
         self.poll_loop_count = 0
         self.poll_data = None
@@ -88,7 +89,7 @@ class Util():
         elif self.poll_loop_count == 7:
             data = self.create_poll_request('Temperature')
         elif self.poll_loop_count == 9:
-        #Voltage and Current change more often, check these more
+            # Voltage and Current change more often, check these more
             data = self.create_poll_request('VoltageAndCurrent')
         elif self.poll_loop_count == 11:
             data = self.create_poll_request('VoltageAndCurrent')
@@ -97,7 +98,7 @@ class Util():
         elif self.poll_loop_count == 15:
             data = self.create_poll_request('VoltageAndCurrent')
         elif self.poll_loop_count == 17:
-            #run TotalCapacity only once
+            # run TotalCapacity only once
             self.poll_loop_count = 2
         return data
 
@@ -106,16 +107,30 @@ class Util():
         return bytearray("main recv da ta[{0:02x}] [".format(value[0]), "ascii")
 
     def voltageToCapacity(self):
-        #Hard-set the remaining capacity based on voltage to resync readings
+        # Hard-set the remaining capacity based on voltage to resync readings
         prev_capacity = self.PowerDevice.entities.capacity
         new_voltage = self.PowerDevice.entities.voltage
         if new_voltage == 0:
             return
         if self.total_capacity == 0:
             return
-        #Current makes Voltage to Capacity unreliable, return if Current too high
-        if abs(self.PowerDevice.entities.current) > 2:
-            return
+
+        if prev_capacity != 0:
+            # bypass logic, set initial capacity
+            if abs(self.PowerDevice.entities.current) > 2:
+                # Current makes Voltage to Capacity unreliable, return if Current too high
+                if self.volt_change_count > 0:
+                    self.volt_change_count -= 1
+                return
+
+            # For crossover when charge + discharge happening,
+            # current may be low, but volt still unreliable
+            # therefore, set counter to ensure not tmp volt change
+            self.volt_change_count += 1
+            if self.volt_change_count < 300:
+                return
+            else:
+                self.volt_change_count = 0
 
         percent = 100
         if new_voltage >= 13.5:
@@ -125,9 +140,9 @@ class Util():
         elif new_voltage >= 13.3:
             percent = 90
         elif new_voltage >= 13.2:
-            #special case for 13.2 since volt drop so small here
+            # special case for 13.2 since volt drop so small here
             if prev_capacity == 0:
-                #new batt, no data, assume middle
+                # new batt, no data, assume middle
                 percent = 70
             elif (prev_capacity/self.total_capacity) > 85:
                 percent = 80
@@ -147,9 +162,10 @@ class Util():
             percent = (new_voltage * 10 - 100) / 2
         new_capacity = (self.total_capacity * percent)/100
         logging.debug("old capacity is {} and new is {}".format(prev_capacity, new_capacity))
-        # reset only if dysnc is large - otherwise, we trust our reading
         if abs(prev_capacity - new_capacity)/self.total_capacity > .1:
+        # reset only if dysnc is large - otherwise, we trust our reading
             self.PowerDevice.entities.capacity = new_capacity
+            self.PowerDevice.entities.soc = new_capacity/self.total_capacity * 100
         return
 
 
@@ -187,8 +203,8 @@ class Util():
         return
 
 
+    # extract total capacity from model name
     def updateTotalCapacity(self, bs):
-        #extract total capacity from model name
         device_str = bs.decode(errors='ignore')
         logging.debug("Device name is {}".format(device_str))
         capacity_match = re.search("RBT(\d+)",device_str)
@@ -203,17 +219,18 @@ class Util():
     # Since voltage changes, we convert to watts (per second),
     # subtract, then convert back to amps
     def updateCapacityFromCurrent(self):
-        #time since last update, we (unfortunately) assume same current whole time
+        # time since last update, we (unfortunately) assume same current whole time
         cur_time = datetime.now()
         charge_watts = self.PowerDevice.entities.current * self.PowerDevice.entities.voltage
         logging.debug("Seconds pass is {}".format((cur_time - self.time_int).total_seconds()))
         charge_watts = charge_watts * (cur_time - self.time_int).total_seconds()
         self.time_int = cur_time
-        #capacity rounds for display, use mcapacity
+        # capacity rounds for display, use mcapacity
         capacity_watts = ((self.PowerDevice.entities.mcapacity/1000) * 12.8 * 60 * 60)
         new_watts = capacity_watts + charge_watts
         capacity_amps = new_watts/(12.8 * 60 * 60)
         self.PowerDevice.entities.capacity = capacity_amps
+        self.PowerDevice.entities.soc = capacity_amps/self.total_capacity * 100
         return
 
 
