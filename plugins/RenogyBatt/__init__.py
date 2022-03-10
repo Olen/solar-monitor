@@ -117,7 +117,7 @@ class Util():
 
         if prev_capacity != 0:
             # bypass logic, set initial capacity
-            if abs(self.PowerDevice.entities.current) > 2:
+            if abs(self.PowerDevice.entities.current) > 1.4:
                 # Current makes Voltage to Capacity unreliable, return if Current too high
                 if self.volt_change_count > 0:
                     self.volt_change_count -= 1
@@ -143,11 +143,13 @@ class Util():
             # special case for 13.2 since volt drop so small here
             if prev_capacity == 0:
                 # new batt, no data, assume middle
-                percent = 70
-            elif (prev_capacity/self.total_capacity) > 85:
+                percent = 65
+            elif (prev_capacity/self.total_capacity) > 80:
                 percent = 80
-            elif (prev_capacity/self.total_capacity) < 45:
+            elif (prev_capacity/self.total_capacity) < 50:
                 percent = 50
+            else:
+                percent = 65
         elif new_voltage >= 13.1:
             percent = 40
         elif new_voltage >= 13.0:

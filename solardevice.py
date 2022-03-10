@@ -948,6 +948,12 @@ class RenogyBatteryDevice():
             'max': 3731,
             'maxdiff': 20
         }
+        self._bkelvin = {
+            'val': 2731,
+            'min': 1731,
+            'max': 3731,
+            'maxdiff': 20
+        }
         self._mcapacity = {
             'val': 0,
             'min': 0,
@@ -1049,6 +1055,31 @@ class RenogyBatteryDevice():
     def temperature(self, value):
         self.validate('_dkelvin', value)
 
+    @property
+    def temperature_celsius(self):
+        return round((self.temperature - 2731) * 0.1, 1)
+    @temperature_celsius.setter
+    def temperature_celsius(self, value):
+        if value > 255:
+            value = value - 6553.4
+        self.temperature = (value * 10) + 2731
+
+    @property
+    def battery_temperature(self):
+        return self._bkelvin['val']
+    @battery_temperature.setter
+    def battery_temperature(self, value):
+        self.validate('_bkelvin', value)
+
+    @property
+    def battery_temperature_celsius(self):
+        return round((self.battery_temperature - 2731) * 0.1, 1)
+    @battery_temperature_celsius.setter
+    def battery_temperature_celsius(self, value):
+        if value > 255:
+            value = value - 6553.4
+        self.battery_temperature = (value * 10) + 2731
+
     # current
     @property
     def mcurrent(self):
@@ -1064,8 +1095,8 @@ class RenogyBatteryDevice():
 
     @current.setter
     def current(self, value):
-        if value > 400:
-            value = value - 655.35
+        if value > 255:
+            value = value - 655.34
         self.mcurrent = value * 1000
         if value == 0 and (self.mcurrent > 500 or self.mcurrent < -500):
             return
