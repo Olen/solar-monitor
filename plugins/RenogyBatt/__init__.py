@@ -20,7 +20,7 @@ class Util():
         # this actually grabs model name that contains capacity val
         REG_ADDR = 2
         READ_WORD = 8
-    class VoltageAndCurrentState():
+    class VoltageCurrentSOCState():
         REG_ADDR  = 178
         READ_WORD = 6
     class TemperatureState():
@@ -50,13 +50,19 @@ class Util():
         abuse the "length" field (byte #3 in the response) as an "id"
         '''
 
+        # extra BT val debugging
+        #logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
+        #logging.debug("Int vals are:")
+        #for i in range(len(value)):
+        #    logging.debug("{}".format(value[i]))
+
         if not self.Validate(value):
             logging.warning("PollerUpdate - Invalid data: {}".format(value))
             return False
 
         if value[0] == self.PowerDevice.device_id and value[1] == self.function_READ:
-            if value[2] == self.VoltageAndCurrentState.READ_WORD * 2:
-                self.updateVoltageAndCurrent(value)
+            if value[2] == self.VoltageCurrentSOCState.READ_WORD * 2:
+                self.updateVoltageCurrentSOC(value)
             if value[2] == self.CellVoltageState.READ_WORD * 2:
                 self.updateCellVoltage(value)
             if value[2] == self.TemperatureState.READ_WORD * 2:
@@ -83,21 +89,23 @@ class Util():
         if self.poll_loop_count == 1:
             data = self.create_poll_request('TotalCapacity')
         if self.poll_loop_count == 3:
-            data = self.create_poll_request('VoltageAndCurrent')
+            data = self.create_poll_request('VoltageCurrentSOC')
         elif self.poll_loop_count == 5:
             data = self.create_poll_request('CellVoltage')
+        elif self.poll_loop_count == 6:
+            data = self.create_poll_request('VoltageCurrentSOC')
         elif self.poll_loop_count == 7:
             data = self.create_poll_request('Temperature')
         elif self.poll_loop_count == 9:
             # Voltage and Current change more often, check these more
-            data = self.create_poll_request('VoltageAndCurrent')
+            data = self.create_poll_request('VoltageCurrentSOC')
         elif self.poll_loop_count == 11:
-            data = self.create_poll_request('VoltageAndCurrent')
+            data = self.create_poll_request('VoltageCurrentSOC')
         elif self.poll_loop_count == 13:
-            data = self.create_poll_request('VoltageAndCurrent')
+            data = self.create_poll_request('VoltageCurrentSOC')
         elif self.poll_loop_count == 15:
-            data = self.create_poll_request('VoltageAndCurrent')
-        elif self.poll_loop_count == 17:
+            data = self.create_poll_request('VoltageCurrentSOC')
+        elif self.poll_loop_count == 16:
             # run TotalCapacity only once
             self.poll_loop_count = 2
         return data
@@ -167,20 +175,31 @@ class Util():
         if abs(prev_capacity - new_capacity)/self.total_capacity > .1:
         # reset only if dysnc is large - otherwise, we trust our reading
             self.PowerDevice.entities.capacity = new_capacity
-            self.PowerDevice.entities.soc = new_capacity/self.total_capacity * 100
         return
 
 
-    def updateVoltageAndCurrent(self, bs):
+    def updateVoltageCurrentSOC(self, bs):
         logging.debug("Voltage {} {} => {}".format(
             int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * .1))
         logging.debug("Current {} {} => {}".format(
             int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2)* .01))
-        self.PowerDevice.entities.current = self.Bytes2Int(bs, 3, 2) * .01
+        soc = 0
+        if self.total_capacity > 0:
+            soc = self.Bytes2Int(bs, 8, 3)* .1
+            logging.debug("SOC {} {} {} => {}. Divided by capacity: {}".format(
+                int(bs[8]), int(bs[9]), int(bs[10]), soc,
+                (soc/self.total_capacity)))
+            self.PowerDevice.entities.soc = soc/self.total_capacity
+
+        current = self.Bytes2Int(bs, 3, 2) * .01
+        if current > 255:
+            current = current - 655.34
+        self.PowerDevice.entities.current = current
         self.updateCapacityFromCurrent()
         self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 5, 2) * .1
         # hard-set capacity based on voltage to reset desync
         self.voltageToCapacity()
+        return
 
 
     def updateCellVoltage(self, bs):
@@ -200,8 +219,11 @@ class Util():
             local_s = 5 + (j*2)
             logging.debug("Temperature {} {} => {}".format(
                 int(bs[local_s]),int(bs[local_s+1]), self.Bytes2Int(bs, local_s, 2) * .1))
-            self.PowerDevice.entities.temperature_celsius = self.Bytes2Int(bs, local_s, 2) * .1
-            self.PowerDevice.entities.battery_temperature_celsius = self.Bytes2Int(bs, local_s, 2) * .1
+            temperature = self.Bytes2Int(bs, local_s, 2) * .1
+            if temperature > 255:
+                temperature = temperature - 6553.4
+            self.PowerDevice.entities.temperature_celsius = temperature
+            self.PowerDevice.entities.battery_temperature_celsius = temperature
         return
 
 
@@ -232,7 +254,6 @@ class Util():
         new_watts = capacity_watts + charge_watts
         capacity_amps = new_watts/(12.8 * 60 * 60)
         self.PowerDevice.entities.capacity = capacity_amps
-        self.PowerDevice.entities.soc = capacity_amps/self.total_capacity * 100
         return
 
 
@@ -320,9 +341,9 @@ class Util():
         device_id = self.PowerDevice.device_id
         self.poll_register = cmd
         regAddr = 0
-        if cmd == 'VoltageAndCurrent':
-            regAddr = self.VoltageAndCurrentState.REG_ADDR
-            readWrd = self.VoltageAndCurrentState.READ_WORD
+        if cmd == 'VoltageCurrentSOC':
+            regAddr = self.VoltageCurrentSOCState.REG_ADDR
+            readWrd = self.VoltageCurrentSOCState.READ_WORD
         elif cmd == 'Temperature':
             regAddr = self.TemperatureState.REG_ADDR
             readWrd = self.TemperatureState.READ_WORD
