@@ -2,6 +2,7 @@
 adapter = hci0
 debug = False
 temperature = C
+reconnect = False
 # C = Celsius
 # K = Kelvin
 # F = Farenheit
