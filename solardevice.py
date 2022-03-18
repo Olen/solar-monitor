@@ -328,7 +328,7 @@ class PowerDevice():
             'val': 0,
             'min': 1,
             'max': 1000,
-            'maxdiff': 1000
+            'maxdiff': 200
         }
         self._dkelvin = {
             'val': 2731,
@@ -346,7 +346,7 @@ class PowerDevice():
             'val': 0,
             'min': 0,
             'max': 250000,
-            'maxdiff': 200000
+            'maxdiff': 20000
         }
         self._mcurrent = {
             'val': 0,
