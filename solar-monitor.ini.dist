@@ -2,11 +2,16 @@
 adapter = hci0
 debug = False
 temperature = C
+reconnect = False
 # C = Celsius
 # K = Kelvin
 # F = Farenheit
 
 
+[renogy_battery_1]
+type = RenogyBatt
+mac = 11:11:11:11:11:11
+reconnect = True
 
 [battery_1]
 type = Meritsun

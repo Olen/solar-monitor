@@ -143,7 +143,7 @@ class SolarDevice(gatt.Device):
         super().services_resolved()
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
-        self.util = self.module.Util(self)  
+        self.util = self.module.Util(self)
 
         device_notification_service = None
         device_write_service = None
@@ -177,7 +177,7 @@ class SolarDevice(gatt.Device):
 
         if self.need_polling:
             self.poller_thread = threading.Thread(target=self.device_poller)
-            self.poller_thread.daemon = True 
+            self.poller_thread.daemon = True
             self.poller_thread.name = "Device-poller-thread {}".format(self.logger_name)
             self.poller_thread.start()
 
@@ -186,7 +186,7 @@ class SolarDevice(gatt.Device):
             self.command_trigger = threading.Event()
             self.datalogger.mqtt.trigger[self.logger_name] = self.command_trigger
             self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
-            self.command_thread.daemon = True 
+            self.command_thread.daemon = True
             self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
             self.command_thread.start()
 
@@ -222,7 +222,7 @@ class SolarDevice(gatt.Device):
             try:
                 self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
                 self.datalogger.log(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius)
-                
+
             except:
                 pass
 
@@ -346,7 +346,7 @@ class PowerDevice():
             'val': 0,
             'min': 0,
             'max': 250000,
-            'maxdiff': 10
+            'maxdiff': 20000
         }
         self._mcurrent = {
             'val': 0,
@@ -461,14 +461,14 @@ class PowerDevice():
     def datalogger(self):
         return self.parent.datalogger
 
-    @property 
+    @property
     def dsoc(self):
         return self._dsoc['val']
     @dsoc.setter
     def dsoc(self, value):
         self.validate('_dsoc', value)
 
-    @property 
+    @property
     def soc(self):
         return (self.dsoc / 10)
     @soc.setter
@@ -706,7 +706,7 @@ class PowerDevice():
                 out = "{} {} == {},".format(out, var, self.__dict__[var])
         logging.debug(out)
 
-    
+
     def validate(self, var, val):
         definition = getattr(self, var)
         val = float(val)
@@ -724,7 +724,7 @@ class PowerDevice():
             return False
         logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
         self.__dict__[var]['val'] = val
-        
+
 
 class InverterDevice(PowerDevice):
     '''
@@ -750,7 +750,7 @@ class InverterDevice(PowerDevice):
 
 class RectifierDevice(PowerDevice):
     '''
-    Special class for Rectifier-devices  (AC-DC).  
+    Special class for Rectifier-devices  (AC-DC).
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     def __init__(self, parent=None):
@@ -772,7 +772,7 @@ class RectifierDevice(PowerDevice):
 
 class RegulatorDevice(PowerDevice):
     '''
-    Special class for Regulator-devices.  
+    Special class for Regulator-devices.
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     def __init__(self, parent=None):
@@ -781,8 +781,8 @@ class RegulatorDevice(PowerDevice):
 
 
 
-            
-            
+
+
 
 
     def parse_notification(self, value):
@@ -802,7 +802,7 @@ class RegulatorDevice(PowerDevice):
 
 class BatteryDevice(PowerDevice):
     '''
-    Special class for Battery-devices.  
+    Special class for Battery-devices.
     Extending PowerDevice class with more properties specifically for the batteries
     '''
 
@@ -815,7 +815,7 @@ class BatteryDevice(PowerDevice):
             'val': 0,
             'min': -500000,
             'max': 500000,
-            'maxdiff': 100000
+            'maxdiff': 400000
         }
         self._mvoltage = {
             'val': 0,
@@ -860,7 +860,7 @@ class BatteryDevice(PowerDevice):
     @property
     def current(self):
         return super().current
-        
+
     @mcurrent.setter
     def mcurrent(self, value):
         super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
@@ -921,6 +921,4 @@ class BatteryDevice(PowerDevice):
     def health_changed(self, was):
         if was != self.health:
             logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
-
-
 
