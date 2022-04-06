@@ -4,7 +4,7 @@ Plugins are simple python modules, and only need two classes that are used by th
 
 `class Config()` and `class Util()`
 
-They can be put in their own sub directory under "plugins/" and only require a `__init__.py` file so they can be imported by the solardivce.py script.
+They can be put in their own sub directory under "plugins/" and only require a `__init__.py` file so they can be imported by the solardevice.py script.
 
 See the existing plugins for examples.
 
@@ -44,16 +44,16 @@ The Util class is bound to a PowerDevice object and is used to read, write and p
 __init__() of the class expects a `PowerDevice` (an object defined in `solardevice.py`)  as its only parameter.  The plugin will then update this device-object as data is recieved.
 
 ### Updates
-When we recieve an update, the function `notificationUpdate()` is called with the raw data and the UUID of the characteristic we recieved the data from.  This function is then responsible for parsing the data and will then update the `PowerDevice` object.  The function should return True if the message was understood and handled, and False if it was not.
+When we recieve an update, the class function `notificationUpdate(data, char)` is called with the raw data and the UUID of the characteristic we recieved the data from.  This function is then responsible for parsing the data and will then update the `PowerDevice` object.  The function should return True if the message was understood and handled, and False if it was not.
 
 ### Ack
-The function `ackData(data)` is required if the device expects an ack for each notification it sends. This function must generate and return a valid "ack-packet" for the received `data`
+The class function `ackData(data)` is required if the device expects an ack for each notification it sends. This function must generate and return a valid "ack-packet" for the received `data`
 
 ### Polling
-If polling is required, the function `pollRequest()` must return the packet we need to send to the device to poll if for new data.
+If polling is required, the class function `pollRequest()` must return the packet we need to send to the device to poll if for new data.
 
 ### Commands
-Some devices accept commands, such as turning power on and off on an inverter.  To send commands to a device, we call the function `cmdRequest` with two paramters, the *command*, and a *value*. E.g. *command* = `power_switch` and *value* = `1  or `0` for "on" or "off".
+Some devices accept commands, such as turning power on and off on an inverter.  To send commands to a device, we call the function `cmdRequest(command, value)` with two paramters, the *command*, and a *value*. E.g. *command* = `power_switch` and *value* = `1  or `0` for "on" or "off".
 
 The function must return a *list* of packets that should be sent to the device.
 
