@@ -234,6 +234,14 @@ class SolarDevice(gatt.Device):
             except:
                 pass
 
+            # Also return adjustted cell voltage(mvoltage -> voltage) for user preference
+            try:
+                for cell in self.entities.cell_voltage:
+                    if self.entities.cell_voltage[cell]['val'] > 0:
+                        self.datalogger.log(self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val'])
+            except:
+                pass
+
     def characteristic_enable_notifications_succeeded(self, characteristic):
         super().characteristic_enable_notifications_succeeded(characteristic)
         logging.info("[{}] Notifications enabled for: [{}]".format(self.logger_name, characteristic.uuid))
@@ -896,6 +904,22 @@ class BatteryDevice(PowerDevice):
     def cell_mvoltage(self, value):
         cell = value[0]
         new_value = value[1]
+        current_value = self._cell_mvoltage[cell]['val']
+        if new_value > 0 and abs(new_value - current_value) > 10:
+            self._cell_mvoltage[cell]['val'] = new_value
+
+    @property
+    def cell_voltage(self):
+        cell_array = {}
+        for cell in self._cell_mvoltage:
+            cell_array[cell] = {
+                    'val' : (self._cell_mvoltage[cell]['val'] * .01)
+                    }
+        return cell_array
+    @cell_voltage.setter
+    def cell_voltage(self, value):
+        cell = value[0]
+        new_value = value[1] * 100
         current_value = self._cell_mvoltage[cell]['val']
         if new_value > 0 and abs(new_value - current_value) > 10:
             self._cell_mvoltage[cell]['val'] = new_value
