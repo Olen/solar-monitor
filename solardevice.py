@@ -913,13 +913,13 @@ class BatteryDevice(PowerDevice):
         cell_array = {}
         for cell in self._cell_mvoltage:
             cell_array[cell] = {
-                    'val' : (self._cell_mvoltage[cell]['val'] * .01)
+                    'val' : (self._cell_mvoltage[cell]['val'] * .001)
                     }
         return cell_array
     @cell_voltage.setter
     def cell_voltage(self, value):
         cell = value[0]
-        new_value = value[1] * 100
+        new_value = value[1] * 1000
         current_value = self._cell_mvoltage[cell]['val']
         if new_value > 0 and abs(new_value - current_value) > 10:
             self._cell_mvoltage[cell]['val'] = new_value
