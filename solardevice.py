@@ -181,8 +181,8 @@ class SolarDevice(gatt.Device):
             self.poller_thread.name = "Device-poller-thread {}".format(self.logger_name)
             self.poller_thread.start()
 
-        # We only need and MQTT-poller thread if we have a write characteristic to send data to
-        if self.char_write_commands:
+        # We only need an MQTT-poller thread if we have a write characteristic to send data to and MQTT is set up
+        if self.char_write_commands and self.datalogger.mqtt is not None:
             self.command_trigger = threading.Event()
             self.datalogger.mqtt.trigger[self.logger_name] = self.command_trigger
             self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
