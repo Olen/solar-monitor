@@ -208,8 +208,8 @@ class Util():
         for j in range(int(bs[4])):
             local_s = 5 + (j*2)
             logging.debug("CellmVoltage {} {} => {}".format(
-                int(bs[local_s]),int(bs[local_s+1]), self.Bytes2Int(bs, local_s, 2) * 10))
-            self.PowerDevice.entities.cell_mvoltage = (j+1,self.Bytes2Int(bs, local_s, 2) * 10)
+                int(bs[local_s]),int(bs[local_s+1]), self.Bytes2Int(bs, local_s, 2) * 100))
+            self.PowerDevice.entities.cell_mvoltage = (j+1,self.Bytes2Int(bs, local_s, 2) * 100)
         return
 
 
