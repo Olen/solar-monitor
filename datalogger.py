@@ -226,6 +226,7 @@ class DataLogger():
         if self.mqtt:
             self.mqtt.publish(device, var, val)
         if self.url:
+            logging.info("[{}] Sending data to {}".format(device, self.url))
             ts = datetime.now().isoformat(' ', 'seconds')
             payload = {'device': device, var: val, 'ts': ts}
             header = {'Content-type': 'application/json', 'Accept': 'text/plain', 'Authorization': 'Bearer {}'.format(self.token)}
