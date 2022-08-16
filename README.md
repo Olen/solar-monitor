@@ -108,3 +108,6 @@ This allows you to remotely monitor the data from your installation:
 # Credits
 A huge thanks to Pramod P K https://github.com/prapkengr/ for doing reverse engineering and decompiling of the Android Apps to figure out the protocols used.
 
+<a href="https://www.buymeacoffee.com/olatho" target="_blank">
+<img src="https://user-images.githubusercontent.com/203184/184674974-db7b9e53-8c5a-40a0-bf71-c01311b36b0a.png" style="height: 50px !important;"> 
+</a>
