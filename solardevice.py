@@ -209,7 +209,7 @@ class SolarDevice(gatt.Device):
             items = ['current', 'input_current', 'charge_current',
                      'voltage', 'input_voltage', 'charge_voltage',
                      'power',   'input_power',   'charge_power',
-                     'soc', 'capacity', 'charge_cycles', 'state', 'health', 'power_switch'
+                     'soc', 'capacity', 'exp_capacity', 'max_capacity', 'charge_cycles', 'state', 'health', 'power_switch'
                     ]
             for item in items:
                 try:
@@ -525,7 +525,6 @@ class PowerDevice():
     def battery_temperature_fahrenheit(self, value):
         self.temperature = (value + 459.67) * (5/9) * 10
 
-
     @property
     def mcapacity(self):
         return self._mcapacity['val']
@@ -825,6 +824,18 @@ class BatteryDevice(PowerDevice):
             'max': 500000,
             'maxdiff': 400000
         }
+        self._max_capacity = {
+            'val': 0,
+            'min': 0,
+            'max': 400,
+            'maxdiff': 5
+        }
+        self._exp_capacity = {
+            'val': 0,
+            'min': 0,
+            'max': 400,
+            'maxdiff': 5
+        }
         self._mvoltage = {
             'val': 0,
             'min': 10000,
@@ -930,6 +941,21 @@ class BatteryDevice(PowerDevice):
     @afestatus.setter
     def afestatus(self, value):
         self._afestatus = value
+
+    @property
+    def max_capacity(self):
+        return self._max_capacity['val']
+    @max_capacity.setter
+    def max_capacity(self, value):
+        self.validate('_max_capacity', value)
+
+
+    @property
+    def exp_capacity(self):
+        return self._exp_capacity['val']
+    @exp_capacity.setter
+    def exp_capacity(self, value):
+        self.validate('_exp_capacity', value)
 
     @property
     def health(self):
