@@ -16,10 +16,6 @@ class Config():
 
 class Util():
 
-    class TotalCapacityState():
-        # this actually grabs model name that contains capacity val
-        REG_ADDR = 2
-        READ_WORD = 8
     class VoltageCurrentSOCState():
         REG_ADDR  = 178
         READ_WORD = 6
@@ -34,7 +30,7 @@ class Util():
         self.PowerDevice = power_device
         self.function_READ = 3
         self.function_WRITE = 6
-        self.total_capacity = 0
+        self.max_capacity = 0
         self.time_int = datetime.now()
         self.param_buffer = b""
         self.param_expect = 0
@@ -51,10 +47,10 @@ class Util():
         '''
 
         # extra BT val debugging
-        #logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
-        #logging.debug("Int vals are:")
-        #for i in range(len(value)):
-        #    logging.debug("{}".format(value[i]))
+        #  logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
+        #  logging.debug("Int vals are:")
+        #  for i in range(len(value)):
+        #      logging.debug("{}".format(value[i]))
 
         if not self.Validate(value):
             logging.warning("PollerUpdate - Invalid data: {}".format(value))
@@ -67,8 +63,6 @@ class Util():
                 self.updateCellVoltage(value)
             if value[2] == self.TemperatureState.READ_WORD * 2:
                 self.updateTemperature(value)
-            if value[2] == self.TotalCapacityState.READ_WORD * 2:
-                self.updateTotalCapacity(value)
         elif value[0] == self.PowerDevice.device_id and value[1] == self.function_WRITE:
             # This is the first packet in a write-response
             # Ignore for now
@@ -116,11 +110,11 @@ class Util():
 
     def voltageToCapacity(self):
         # Hard-set the remaining capacity based on voltage to resync readings
-        prev_capacity = self.PowerDevice.entities.capacity
+        prev_capacity = self.PowerDevice.entities.exp_capacity
         new_voltage = self.PowerDevice.entities.voltage
         if new_voltage == 0:
             return
-        if self.total_capacity == 0:
+        if self.max_capacity == 0:
             return
 
         if prev_capacity != 0:
@@ -152,9 +146,9 @@ class Util():
             if prev_capacity == 0:
                 # new batt, no data, assume middle
                 percent = 65
-            elif (prev_capacity/self.total_capacity) > 80:
+            elif (prev_capacity/self.max_capacity) > 80:
                 percent = 80
-            elif (prev_capacity/self.total_capacity) < 50:
+            elif (prev_capacity/self.max_capacity) < 50:
                 percent = 50
             else:
                 percent = 65
@@ -170,11 +164,11 @@ class Util():
             percent = (new_voltage * 10 - 100) / 2 - 1
         elif new_voltage >= 10.0:
             percent = (new_voltage * 10 - 100) / 2
-        new_capacity = (self.total_capacity * percent)/100
+        new_capacity = (self.max_capacity * percent)/100
         logging.debug("old capacity is {} and new is {}".format(prev_capacity, new_capacity))
-        if abs(prev_capacity - new_capacity)/self.total_capacity > .1:
+        if abs(prev_capacity - new_capacity)/self.max_capacity > .1:
         # reset only if dysnc is large - otherwise, we trust our reading
-            self.PowerDevice.entities.capacity = new_capacity
+            self.PowerDevice.entities.exp_capacity = new_capacity
         return
 
 
@@ -182,14 +176,17 @@ class Util():
         logging.debug("Voltage {} {} => {}".format(
             int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * .1))
         logging.debug("Current {} {} => {}".format(
-            int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2)* .01))
-        soc = 0
-        if self.total_capacity > 0:
-            soc = self.Bytes2Int(bs, 8, 3)* .1
-            logging.debug("SOC {} {} {} => {}. Divided by capacity: {}".format(
-                int(bs[8]), int(bs[9]), int(bs[10]), soc,
-                (soc/self.total_capacity)))
-            self.PowerDevice.entities.soc = soc/self.total_capacity
+            int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2) * .01))
+        self.max_capacity = self.Bytes2Int(bs, 12, 3) * .001
+        logging.debug("MaxCapacity {} {} {} => {}".format(
+            int(bs[12]), int(bs[13]), int(bs[14]), self.max_capacity))
+        capacity = self.Bytes2Int(bs, 8, 3)* .001
+        logging.debug("Capacity {} {} {} => {}. Divided by max for SOC: {}".format(
+            int(bs[8]), int(bs[9]), int(bs[10]), capacity,
+            (capacity/self.max_capacity * 100)))
+        self.PowerDevice.entities.capacity = capacity
+        self.PowerDevice.entities.soc = capacity/self.max_capacity * 100
+        self.PowerDevice.entities.max_capacity = self.max_capacity
 
         current = self.Bytes2Int(bs, 3, 2) * .01
         if current > 255:
@@ -226,18 +223,6 @@ class Util():
             self.PowerDevice.entities.battery_temperature_celsius = temperature
         return
 
-
-    # extract total capacity from model name
-    def updateTotalCapacity(self, bs):
-        device_str = bs.decode(errors='ignore')
-        logging.debug("Device name is {}".format(device_str))
-        capacity_match = re.search("RBT(\d+)",device_str)
-        total_capacity = int(capacity_match.group(1))
-        logging.debug("TotalCapacity is: {}".format(total_capacity))
-        self.total_capacity = total_capacity
-        return
-
-
     # Remaining Capacity reading from battery could be... improved
     # Here we run our own updating of capacity.
     # Since voltage changes, we convert to watts (per second),
@@ -250,10 +235,10 @@ class Util():
         charge_watts = charge_watts * (cur_time - self.time_int).total_seconds()
         self.time_int = cur_time
         # capacity rounds for display, use mcapacity
-        capacity_watts = ((self.PowerDevice.entities.mcapacity/1000) * 12.8 * 60 * 60)
+        capacity_watts = (self.PowerDevice.entities.exp_capacity * 12.8 * 60 * 60)
         new_watts = capacity_watts + charge_watts
         capacity_amps = new_watts/(12.8 * 60 * 60)
-        self.PowerDevice.entities.capacity = capacity_amps
+        self.PowerDevice.entities.exp_capacity = capacity_amps
         return
 
 
@@ -350,9 +335,6 @@ class Util():
         elif cmd == 'CellVoltage':
             regAddr = self.CellVoltageState.REG_ADDR
             readWrd = self.CellVoltageState.READ_WORD
-        elif cmd == 'TotalCapacity':
-            regAddr = self.TotalCapacityState.REG_ADDR
-            readWrd = self.TotalCapacityState.READ_WORD
 
         if regAddr:
             data = []
