@@ -7,5 +7,5 @@ COPY . .
 
 RUN pip install -r requirements.txt
 
-# ENTRYPOINT [ "python", "-u", "solar-monitor.py" ]
+ENTRYPOINT [ "python", "-u", "solar-monitor.py" ]
 

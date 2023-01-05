@@ -14,27 +14,33 @@ Currently supported
 # Requirements
 Look at requirements.txt
 
-Be aware that libscrc is NOT pip-installable on RPI, so you need to build it from source: https://github.com/hex-in/libscrc
+Be aware that libscrc is NOT pip-installable on all versions of RPI, so you need to build it from source: https://github.com/hex-in/libscrc
 
 The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
 
 # Docker
-**THIS IS CURRENTLY EXPERIMENTAL**
 
-There is a Dockerfile that can be used to build a container.  You should be able to run
+To run the service as a container, you can use the included `docker-compose.yaml`
+
+* Copy `solar-monitor.ini.dist` to e.g `~/solar-monitor/solar-monitor.ini`
+* Edit the file as per the instructions below.
+* Run
+
 ```
-docker build --network=host -t solar-monitor .
-docker run -i -t --network=host -v /var/run/dbus:/var/run/dbus  solar-monitor bash
-python solar-monitor.py
+docker-compose up -d
+```
+in the same dir as you downloaded these files.  This might take some time, depending on your build host.
+
+Check the logs with
+
+```
+docker logs solar-monitor
 ```
 
 `network=host` is needed because access to bluetooth devices requires host network.
 
-Work is needed to add the `.ini`-file and stuff, - and find a way to enter pin codes for devices that require pairing, before this is ready for prime time, but please test it and give feedback.
 
-
-
-# Usage
+# Running as a service
 
 You need the following:
 
@@ -51,7 +57,15 @@ Also
 
 Copy solar-monitor.ini.dist to solar-monitor.ini, and add the correct mac addresses to your BLE devices (NOT your mobile phone with the app, but the actual battery/bluetooth adapter)
 
-Run solar-monitor.py (might require root privileges to access bluetooth directly)
+Copy solar-monitor.service to /etc/systemd/system/ and run
+```
+systemctl daemon-reload
+systemctl enable solar-monitor
+systemctl start solar-monitor
+```
+The systemd unit file might need some adjustments to point to the right scripts
+
+Alternatively just run `solar-monitor.py` in something like termux or screen (might require root privileges to access bluetooth directly)
 
 
 # Output
