@@ -4,4 +4,7 @@ requests
 paho-mqtt
 libscrc
 python-dateutil
+dbus-python
+pycairo 
+PyGObject
 
