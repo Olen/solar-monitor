@@ -18,6 +18,20 @@ Be aware that libscrc is NOT pip-installable on RPI, so you need to build it fro
 
 The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
 
+# Docker
+**THIS IS CURRENTLY EXPERIMENTAL**
+
+There is a Dockerfile that can be used to build a container.  You should be able to run
+```
+docker build --network=host -t solar-monitor .
+docker run -i -t --network=host -v /var/run/dbus:/var/run/dbus  solar-monitor bash
+python solar-monitor.py
+```
+
+`network=host` is needed because access to bluetooth devices requires host network.
+
+Work is needed to add the `.ini`-file and stuff, - and find a way to enter pin codes for devices that require pairing, before this is ready for prime time, but please test it and give feedback.
+
 
 
 # Usage
