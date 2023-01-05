@@ -4,7 +4,10 @@ This utility monitors defined BLE-devices, and sends parsed data to a remote ser
 
 Currently supported
 - SRNE regulators (monitored by the SolarLink APP: https://play.google.com/store/apps/details?id=com.shuorigf
-- Lithium Batteries (monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
+- Lithium Batteries:
+  - monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
+  - monitored by Renogy DC Home APP: https://play.google.com/store/apps/details?id=com.renogy.dchome)
+  - monitored by TBEnergy APP: https://play.google.com/store/apps/details?id=com.topband.smartpower
 - Victron Energy - VE.Direct devices - currently only Phoenix inverters are tested.  Work in progress to add more devices
 - Renogy BT-1 (uses the same protocol as the SolarLink/SRNE)
 
@@ -107,3 +110,6 @@ This allows you to remotely monitor the data from your installation:
 # Credits
 A huge thanks to Pramod P K https://github.com/prapkengr/ for doing reverse engineering and decompiling of the Android Apps to figure out the protocols used.
 
+<a href="https://www.buymeacoffee.com/olatho" target="_blank">
+<img src="https://user-images.githubusercontent.com/203184/184674974-db7b9e53-8c5a-40a0-bf71-c01311b36b0a.png" style="height: 50px !important;"> 
+</a>

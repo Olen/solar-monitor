@@ -2,11 +2,16 @@
 adapter = hci0
 debug = False
 temperature = C
+reconnect = False
 # C = Celsius
 # K = Kelvin
 # F = Farenheit
 
 
+[renogy_battery_1]
+type = RenogyBatt
+mac = 11:11:11:11:11:11
+reconnect = True
 
 [battery_1]
 type = Meritsun
@@ -39,8 +44,10 @@ url = http://server/solar/api/
 token = 39129e20be0503937cb72a5f719337cc
 
 [mqtt]
-broker = mqtt.server.addr     # Address to the mqtt broker
-prefix = solar                # All topics are prefixed by "prefix/"
-                              # E.g. prefix/battery_1/voltage
+# Address to the mqtt broker
+broker = mqtt.server.addr 
+# All topics are prefixed by this prefix
+# E.g. "solar/battery_1/voltage"
+prefix = solar                
 
 

@@ -86,6 +86,7 @@ logging.info("Found {} BLE-devices".format(len(device_manager.devices())))
 
 
 for dev in device_manager.devices():
+    logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
     for section in config.sections():
         if config.get(section, "mac", fallback=None) and config.get(section, "type", fallback=None):
             mac = config.get(section, "mac").lower()
