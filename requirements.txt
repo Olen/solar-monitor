@@ -1,7 +1,1 @@
-gatt
-configparser
-libscrc
-json
-requests
 paho-mqtt
-threading

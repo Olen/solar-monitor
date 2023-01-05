@@ -306,6 +306,7 @@ class SolarDevice(gatt.Device):
                         time.sleep(0.2)
                 else:
                     logging.debug("[{}] Unknown MQTT-command {} -> {}".format(self.logger_name, var, message))
+                logging.info("[{}] MQTT msq complete".format(self.logger_name))
         logging.info("[{}] Ending thread {}".format(self.logger_name, threading.current_thread().name))
 
 
@@ -453,14 +454,14 @@ class PowerDevice():
     def datalogger(self):
         return self.parent.datalogger
 
-    @property 
+    @property
     def dsoc(self):
         return self._dsoc['val']
     @dsoc.setter
     def dsoc(self, value):
         self.validate('_dsoc', value)
 
-    @property 
+    @property
     def soc(self):
         return (self.dsoc / 10)
     @soc.setter
