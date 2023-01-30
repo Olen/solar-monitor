@@ -23,7 +23,8 @@ The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring pla
 To run the service as a container, you can use the included `docker-compose.yaml`
 
 * Copy `solar-monitor.ini.dist` to e.g `~/solar-monitor/solar-monitor.ini`
-* Edit the file as per the instructions below.
+* Ensure that docker-compose.yaml has the right path to the ini-file
+* Edit the ini-file as per the instructions below.
 * Run
 
 ```
