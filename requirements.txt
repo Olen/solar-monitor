@@ -7,4 +7,3 @@ python-dateutil
 dbus-python
 pycairo 
 PyGObject
-

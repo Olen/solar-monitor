@@ -45,7 +45,12 @@ duallog.setup('solar-monitor', minLevel=level, fileLevel=level, rotation='daily'
 
 # Set up data logging
 # datalogger = None
-datalogger = DataLogger(config)
+try:
+    datalogger = DataLogger(config)
+except Exception as e:
+    logging.error("Unable to set up datalogger")
+    loggign.error(e)
+    sys.exit(1)
 
 
 # Set up device manager and adapter

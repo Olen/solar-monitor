@@ -1,4 +1,4 @@
-import logging                                                     
+import logging
 import libscrc
 
 
@@ -37,8 +37,8 @@ class Util():
         off      = 0
 
 
-    def __init__(self, power_device):                  
-        self.PowerDevice = power_device                  
+    def __init__(self, power_device):
+        self.PowerDevice = power_device
         self.function_READ = 3
         self.function_WRITE = 6
 
@@ -52,7 +52,7 @@ class Util():
 
     def notificationUpdate(self, value, char):
         '''
-        Fortunately we read a different number of bytes from each register, so we can 
+        Fortunately we read a different number of bytes from each register, so we can
         abuse the "length" field (byte #3 in the response) as an "id"
         '''
         logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
@@ -76,7 +76,7 @@ class Util():
             # Ignore for now
             pass
         elif value[0] != self.PowerDevice.device_id and len(self.param_buffer) < self.param_expect:
-            # Lets assume this is a follow up packet 
+            # Lets assume this is a follow up packet
             self.updateParamSettingData(value)
         else:
             logging.warning("Unknown packet received: {}".format(value))

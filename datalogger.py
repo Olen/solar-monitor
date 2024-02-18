@@ -103,6 +103,9 @@ class DataLoggerMqtt():
         elif var == "current" or var == "charge_current" or var == "input_current":
             val['icon'] = "mdi:current-dc"
             val['unit_of_measurement'] = "A"
+        elif var.endswith("_state"):
+            val['device_class'] = "enum"
+            val['options'] = ["charging", "standby", "discharging"]
         elif var == "charge_cycles":
             val['icon'] = "mdi:recycle"
         elif var == "health":

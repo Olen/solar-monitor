@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from __future__ import absolute_import
-import sys
 import threading
 
 from argparse import ArgumentParser
@@ -12,6 +11,7 @@ import sys
 import gatt
 import time
 from datetime import datetime
+from dbus.exceptions import DBusException
 
 # import duallog
 import logging
@@ -24,12 +24,18 @@ from datalogger import DataLogger
 
 # implementation of blegatt.DeviceManager, discovers any GATT device
 class SolarDeviceManager(gatt.DeviceManager):
+
     def device_discovered(self, device):
         logging.info("[{}] Discovered, alias = {}".format(device.mac_address, device.alias()))
-        # self.stop_discovery()   # in case to stop after discovered one device
+        self.stop_discovery()   # in case to stop after discovered one device
 
     def make_device(self, mac_address):
+        # if mac_address not in self._devices:
+        logging.info("[{}] Making device from mac".format(mac_address))
         return SolarDevice(mac_address=mac_address, manager=self)
+        # logging.warning("[{}] Already managed".format(mac_address))
+        # return None
+
 
 
 # implementation of blegatt.Device, connects to selected GATT device
@@ -55,7 +61,10 @@ class SolarDevice(gatt.Device):
         self.poller_thread = None
         self.run_command_poller = False
         self.command_thread = None
+        self.run_connect = False
+        self.connect_thread = None
         self.command_trigger = None
+        self.sleeper = threading.Event()
         if config:
             self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
             self.type = config.get(logger_name, 'type', fallback=None)
@@ -102,7 +111,11 @@ class SolarDevice(gatt.Device):
 
     def connect(self):
         logging.info("[{}] Connecting to {}".format(self.logger_name, self.mac_address))
-        super().connect()
+        try:
+            super().connect()
+        except DBusException as e:
+            logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
+            sys.exit(100)
 
     def connect_succeeded(self):
         super().connect_succeeded()
@@ -119,8 +132,9 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
         if self.auto_reconnect:
-            logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            time.sleep(10)
+            logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
+            self.sleeper.wait(10)
+            # time.sleep(10)
             self.connect()
 
 
@@ -136,11 +150,13 @@ class SolarDevice(gatt.Device):
             self.command_trigger.set()
         if self.auto_reconnect:
             logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            time.sleep(10)
+            self.sleeper.wait(10)
+            # time.sleep(10)
             self.connect()
 
     def services_resolved(self):
         super().services_resolved()
+        self.run_connect = False
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
         self.util = self.module.Util(self)
