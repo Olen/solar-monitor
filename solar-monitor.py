@@ -49,7 +49,7 @@ try:
     datalogger = DataLogger(config)
 except Exception as e:
     logging.error("Unable to set up datalogger")
-    loggign.error(e)
+    logging.error(e)
     sys.exit(1)
 
 
