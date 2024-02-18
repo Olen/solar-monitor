@@ -17,7 +17,8 @@ class DataLoggerMqtt():
         self.broker = broker
         if not hostname:
             hostname = socket.gethostname()
-        self.client = paho.Client("{}".format(hostname))        #  create client object
+
+        self.client = paho.Client(paho.CallbackAPIVersion.VERSION1, "{}".format(hostname))        #  create client object
         if username and password:
             self.client.username_pw_set(username=username,password=password)
 
