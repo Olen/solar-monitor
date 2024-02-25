@@ -99,9 +99,11 @@ class DataLoggerMqtt():
             val['device_class'] = "power"
             val['unit_of_measurement'] = "W"
         elif var == "voltage" or var == "charge_voltage" or var == "input_voltage":
+            val['device_class'] = "voltage"
             val['icon'] = "mdi:flash"
             val['unit_of_measurement'] = "V"
         elif var == "current" or var == "charge_current" or var == "input_current":
+            val['device_class'] = "current"
             val['icon'] = "mdi:current-dc"
             val['unit_of_measurement'] = "A"
         elif var.endswith("_state"):
@@ -111,6 +113,10 @@ class DataLoggerMqtt():
             val['icon'] = "mdi:recycle"
         elif var == "health":
             val['icon'] = "mdi:heart-flash"
+        elif "battery" in device and "cell" in device:
+            val['icon'] = "mdi:battery"
+            val['unit_of_measurement'] = "mV"
+            val['device_class'] = "voltage"
         elif "battery" in device:
             val['icon'] = "mdi:battery"
         elif "regulator" in device:
