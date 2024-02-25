@@ -31,7 +31,7 @@ args = arg_parser.parse_args()
 # Read config
 config = configparser.ConfigParser()
 
-ini_file = "solar-monior.ini"
+ini_file = "solar-monitor.ini"
 if args.ini:
     ini_file = args.ini
 
