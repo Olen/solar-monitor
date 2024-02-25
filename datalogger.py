@@ -113,7 +113,7 @@ class DataLoggerMqtt():
             val['icon'] = "mdi:recycle"
         elif var == "health":
             val['icon'] = "mdi:heart-flash"
-        elif "battery" in device and "cell" in device:
+        elif "battery" in device and "cell" in var:
             val['icon'] = "mdi:battery"
             val['unit_of_measurement'] = "mV"
             val['device_class'] = "voltage"

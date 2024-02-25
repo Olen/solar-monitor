@@ -933,6 +933,15 @@ class BatteryDevice(PowerDevice):
         cell = value[0]
         new_value = value[1]
         current_value = self._cell_mvoltage[cell]['val']
+        if new_value > self._cell_mvoltage[cell]['max']:
+            logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (> max {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['max']))
+            return False
+        if new_value < self._cell_mvoltage[cell]['min']:
+            logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (< min {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['min']))
+            return False
+        if abs(new_value - current_value) > self._cell_mvoltage[cell]['maxdiff']:
+            logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['maxdiff']))
+            return False
         if new_value > 0 and abs(new_value - current_value) > 10:
             self._cell_mvoltage[cell]['val'] = new_value
 
@@ -941,8 +950,8 @@ class BatteryDevice(PowerDevice):
         cell_array = {}
         for cell in self._cell_mvoltage:
             cell_array[cell] = {
-                    'val' : (self._cell_mvoltage[cell]['val'] * .001)
-                    }
+                'val' : (self._cell_mvoltage[cell]['val'] * .001)
+            }
         return cell_array
     @cell_voltage.setter
     def cell_voltage(self, value):
