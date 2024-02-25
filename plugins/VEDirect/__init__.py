@@ -1,4 +1,4 @@
-import logging                                                     
+import logging
 import time
 
 class Config():
@@ -16,7 +16,7 @@ class Config():
 
 class Util():
 
-    def __init__(self, power_device):                  
+    def __init__(self, power_device):
         self.PowerDevice = power_device
         self._char_buffer = b""
         self._is_initialized = False
@@ -96,37 +96,37 @@ class Util():
         value  = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         hs = "f980"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
         # c.write_value(b);
-        
+
         hs = "01"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
         # c.write_value(b);
-        
+
         write_characteristic = self.PowerDevice.device_write_characteristic_commands
         # c = charactersistcs["306b0003-b081-4037-83dc-e59fcc3cdfd0"]
-        
+
         hs = "01"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         hs = "0300"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         hs = "060082189342102703010303"
         value  = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         write_characteristic = self.PowerDevice.device_write_characteristic_polling
         # c = charactersistcs["306b0002-b081-4037-83dc-e59fcc3cdfd0"]
         hs = "f941"
@@ -134,7 +134,7 @@ class Util():
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
         # c.write_value(b);
-        
+
 
     def validate(self):
         pass
