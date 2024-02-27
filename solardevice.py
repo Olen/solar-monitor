@@ -123,7 +123,7 @@ class SolarDevice(gatt.Device):
 
     def connect_failed(self, error):
         super().connect_failed(error)
-        logging.info("[{}] Connection failed: {}".format(self.logger_name, str(error)))
+        logging.error("[{}] Connection failed: {}".format(self.logger_name, str(error)))
         if self.poller_thread:
             self.run_device_poller = False
             logging.info("[{}] Stopping poller-thread".format(self.logger_name))
@@ -140,7 +140,7 @@ class SolarDevice(gatt.Device):
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
-        logging.info("[{}] Disconnected".format(self.logger_name))
+        logging.error("[{}] Disconnected".format(self.logger_name))
         if self.poller_thread:
             self.run_device_poller = False
             logging.info("[{}] Stopping poller-thread".format(self.logger_name))
@@ -933,6 +933,13 @@ class BatteryDevice(PowerDevice):
         cell = value[0]
         new_value = value[1]
         current_value = self._cell_mvoltage[cell]['val']
+        if current_value == 0 and new_value > 0 and new_value > self._cell_mvoltage[cell]['min'] and new_value < self._cell_mvoltage[cell]['max']:
+            # Starting up. Adding new values
+            self._cell_mvoltage[cell]['val'] = new_value
+            return True
+        if current_value == 0 and new_value == 0:
+            # Ignore these
+            return False
         if new_value > self._cell_mvoltage[cell]['max']:
             logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (> max {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['max']))
             return False
