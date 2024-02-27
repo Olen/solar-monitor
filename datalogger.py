@@ -36,7 +36,7 @@ class DataLoggerMqtt():
             prefix = prefix + "/"
         self._prefix = prefix
         self.trigger = {}
-        self._listener_created = 0
+        self._listener_created = {}
 
     @property
     def prefix(self):
@@ -64,7 +64,7 @@ class DataLoggerMqtt():
             time.sleep(0.2)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         ret = self.client.publish(topic, val, retain=True)
-        if "power_switch" in var and time.time() > self._listener_created + 300:
+        if "power_switch" in var and time.time() > self._listener_created[device, var] + 300:
             self.create_listener(device, var)
 
     def create_switch(self, device, var):
@@ -144,7 +144,7 @@ class DataLoggerMqtt():
         logging.info("Creating MQTT-listener {}".format(topic))
         try:
             self.client.subscribe((topic, 0))
-            self._listener_created = time.time()
+            self._listener_created[device, var] = time.time()
         except Exception as e:
             logging.error("MQTT: {}".format(e))
         self.sets[device] = []
