@@ -36,6 +36,7 @@ class DataLoggerMqtt():
             prefix = prefix + "/"
         self._prefix = prefix
         self.trigger = {}
+        self._listener_created = 0
 
     @property
     def prefix(self):
@@ -52,17 +53,19 @@ class DataLoggerMqtt():
         if topic not in self.sensors:
             if "power_switch" in var:
                 # self.delete_switch(device, var)
-                # time.sleep(2)
+                # time.sleep(1)
                 self.create_switch(device, var)
                 self.create_listener(device, var)
             else:
                 self.delete_sensor(device, var)
-                time.sleep(2)
+                time.sleep(1)
                 self.create_sensor(device, var)
             self.sensors.append(topic)
-            time.sleep(0.5)
+            time.sleep(0.2)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         ret = self.client.publish(topic, val, retain=True)
+        if "power_switch" in var and time.time() > self._listener_created + 300:
+            self.create_listener(device, var)
 
     def create_switch(self, device, var):
         topic = "{}{}/{}/state".format(self.prefix, device, var)
@@ -141,6 +144,7 @@ class DataLoggerMqtt():
         logging.info("Creating MQTT-listener {}".format(topic))
         try:
             self.client.subscribe((topic, 0))
+            self._listener_created = time.time()
         except Exception as e:
             logging.error("MQTT: {}".format(e))
         self.sets[device] = []
