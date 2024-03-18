@@ -1,4 +1,4 @@
-import logging                                                     
+import logging
 import libscrc
 
 
@@ -37,8 +37,8 @@ class Util():
         off      = 0
 
 
-    def __init__(self, power_device):                  
-        self.PowerDevice = power_device                  
+    def __init__(self, power_device):
+        self.PowerDevice = power_device
         self.function_READ = 3
         self.function_WRITE = 6
 
@@ -52,7 +52,7 @@ class Util():
 
     def notificationUpdate(self, value, char):
         '''
-        Fortunately we read a different number of bytes from each register, so we can 
+        Fortunately we read a different number of bytes from each register, so we can
         abuse the "length" field (byte #3 in the response) as an "id"
         '''
         logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
@@ -76,7 +76,7 @@ class Util():
             # Ignore for now
             pass
         elif value[0] != self.PowerDevice.device_id and len(self.param_buffer) < self.param_expect:
-            # Lets assume this is a follow up packet 
+            # Lets assume this is a follow up packet
             self.updateParamSettingData(value)
         else:
             logging.warning("Unknown packet received: {}".format(value))
@@ -113,7 +113,7 @@ class Util():
             if int(value) == 0:
                 cmd = 'RegulatorPowerOff'
             elif int(value) == 1:
-                cmd = 'RegulatorPowerOn'  
+                cmd = 'RegulatorPowerOn'
         if cmd:
             datas.append(self.create_poll_request(cmd))
             datas.append(self.create_poll_request('SolarPanelInfo'))
@@ -131,8 +131,17 @@ class Util():
         logging.debug("mElectricity {} {} => {} A".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2) * 0.01))
         self.PowerDevice.entities.charge_current = self.Bytes2Int(bs, 7, 2) * 0.01
         logging.debug("mDeviceTemperature {}".format(int(bs[9])))
-        self.PowerDevice.entities.temperature_celsius = self.Bytes2Int(bs, 9, 1)
+        temp_celsius = self.Bytes2Int(bs, 9, 1)
+        if temp_celsius > 128:
+            temp_celsius = 128 - temp_celsius
+        self.PowerDevice.entities.temperature_celsius = temp_celsius
+        logging.debug("mDeviceTemperatureCelsius {}".format(self.PowerDevice.entities.temperature_celsius))
+        battery_temp_celsius = self.Bytes2Int(bs, 10, 1)
         logging.debug("mBatteryTemperature {}".format(int(bs[10])))
+        if battery_temp_celsius > 128:
+            battery_temp_celsius = 128 - battery_temp_celsius
+        self.PowerDevice.entities.battery_temperature_celsius = battery_temp_celsius
+        logging.debug("mBatteryTemperatureCelsius {}".format(self.PowerDevice.entities.battery_temperature_celsius))
         logging.debug("mLoadVoltage {} {} => {} V".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2) * 0.1))
         self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 11, 2) * 0.1
         logging.debug("mLoadElectricity {} {} => {} A".format(int(bs[13]), int(bs[14]), self.Bytes2Int(bs, 13, 2) * 0.01))
@@ -267,7 +276,8 @@ class Util():
             return False
 
 
-        crc = libscrc.modbus(bytearray(bs[:-2]))
+        # crc = libscrc.modbus(bytearray(bs[:-2]))
+        crc = libscrc.modbus(bytes(bs[:-2]))
         check = self.Bytes2Int(bs, offset=len(bs)-1, length=-2)
         if crc == check:
             return True
@@ -312,7 +322,8 @@ class Util():
             data.append(self.Int2Bytes(readWrd, 0))
             data.append(self.Int2Bytes(readWrd, 1))
 
-            crc = libscrc.modbus(bytearray(data))
+            # crc = libscrc.modbus(bytearray(data))
+            crc = libscrc.modbus(bytes(data))
             data.append(self.Int2Bytes(crc, 1))
             data.append(self.Int2Bytes(crc, 0))
             logging.debug("{} {} => {}".format("create_poll_request", cmd, data))

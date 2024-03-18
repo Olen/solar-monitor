@@ -4,19 +4,44 @@ This utility monitors defined BLE-devices, and sends parsed data to a remote ser
 
 Currently supported
 - SRNE regulators (monitored by the SolarLink APP: https://play.google.com/store/apps/details?id=com.shuorigf
-- Lithium Batteries (monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
-- Victron Energy - VE.Direct devices - currently not completed. Work in progress
-
+- Lithium Batteries:
+  - monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
+  - monitored by Renogy DC Home APP: https://play.google.com/store/apps/details?id=com.renogy.dchome)
+  - monitored by TBEnergy APP: https://play.google.com/store/apps/details?id=com.topband.smartpower
+- Victron Energy - VE.Direct devices - currently only Phoenix inverters are tested.  Work in progress to add more devices
+- Renogy BT-1 (uses the same protocol as the SolarLink/SRNE)
 
 # Requirements
 Look at requirements.txt
-Be aware that libscrc is NOT pip-installable on RPI, so you need to build it from source: https://github.com/hex-in/libscrc
 
-The monitor runs fine on a Raspberry Pi 4, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
+Be aware that libscrc is NOT pip-installable on all versions of RPI, so you need to build it from source: https://github.com/hex-in/libscrc
+
+The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring places where there is no grid power, as it uses a minimal amount of power.
+
+# Docker
+
+To run the service as a container, you can use the included `docker-compose.yaml`
+
+* Copy `solar-monitor.ini.dist` to e.g `~/solar-monitor/solar-monitor.ini`
+* Edit the ini-file as per the instructions below.
+* Ensure that docker-compose.yaml has the right path to the ini-file
+* Run:
+
+```
+docker-compose up -d
+```
+in the same dir as you downloaded these files.  This might take some time, depending on your build host.
+
+Check the logs with
+
+```
+docker logs solar-monitor
+```
+
+`network=host` is needed because access to bluetooth devices requires host network.
 
 
-
-# Usage
+# Running as a service
 
 You need the following:
 
@@ -33,7 +58,15 @@ Also
 
 Copy solar-monitor.ini.dist to solar-monitor.ini, and add the correct mac addresses to your BLE devices (NOT your mobile phone with the app, but the actual battery/bluetooth adapter)
 
-Run solar-monitor.py (might require root privileges to access bluetooth directly)
+Copy solar-monitor.service to /etc/systemd/system/ and run
+```
+systemctl daemon-reload
+systemctl enable solar-monitor
+systemctl start solar-monitor
+```
+The systemd unit file might need some adjustments to point to the right scripts
+
+Alternatively just run `solar-monitor.py` in something like termux or screen (might require root privileges to access bluetooth directly)
 
 
 # Output
@@ -106,3 +139,6 @@ This allows you to remotely monitor the data from your installation:
 # Credits
 A huge thanks to Pramod P K https://github.com/prapkengr/ for doing reverse engineering and decompiling of the Android Apps to figure out the protocols used.
 
+<a href="https://www.buymeacoffee.com/olatho" target="_blank">
+<img src="https://user-images.githubusercontent.com/203184/184674974-db7b9e53-8c5a-40a0-bf71-c01311b36b0a.png" style="height: 50px !important;"> 
+</a>

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from __future__ import absolute_import
-import sys
 import threading
 
 from argparse import ArgumentParser
@@ -12,6 +11,7 @@ import sys
 import gatt
 import time
 from datetime import datetime
+from dbus.exceptions import DBusException
 
 # import duallog
 import logging
@@ -24,12 +24,18 @@ from datalogger import DataLogger
 
 # implementation of blegatt.DeviceManager, discovers any GATT device
 class SolarDeviceManager(gatt.DeviceManager):
+
     def device_discovered(self, device):
         logging.info("[{}] Discovered, alias = {}".format(device.mac_address, device.alias()))
-        # self.stop_discovery()   # in case to stop after discovered one device
+        self.stop_discovery()   # in case to stop after discovered one device
 
     def make_device(self, mac_address):
+        # if mac_address not in self._devices:
+        logging.info("[{}] Making device from mac".format(mac_address))
         return SolarDevice(mac_address=mac_address, manager=self)
+        # logging.warning("[{}] Already managed".format(mac_address))
+        # return None
+
 
 
 # implementation of blegatt.Device, connects to selected GATT device
@@ -55,7 +61,10 @@ class SolarDevice(gatt.Device):
         self.poller_thread = None
         self.run_command_poller = False
         self.command_thread = None
+        self.run_connect = False
+        self.connect_thread = None
         self.command_trigger = None
+        self.sleeper = threading.Event()
         if config:
             self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
             self.type = config.get(logger_name, 'type', fallback=None)
@@ -102,7 +111,11 @@ class SolarDevice(gatt.Device):
 
     def connect(self):
         logging.info("[{}] Connecting to {}".format(self.logger_name, self.mac_address))
-        super().connect()
+        try:
+            super().connect()
+        except DBusException as e:
+            logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
+            sys.exit(100)
 
     def connect_succeeded(self):
         super().connect_succeeded()
@@ -110,7 +123,7 @@ class SolarDevice(gatt.Device):
 
     def connect_failed(self, error):
         super().connect_failed(error)
-        logging.info("[{}] Connection failed: {}".format(self.logger_name, str(error)))
+        logging.error("[{}] Connection failed: {}".format(self.logger_name, str(error)))
         if self.poller_thread:
             self.run_device_poller = False
             logging.info("[{}] Stopping poller-thread".format(self.logger_name))
@@ -119,14 +132,15 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
         if self.auto_reconnect:
-            logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            time.sleep(10)
+            logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
+            self.sleeper.wait(10)
+            # time.sleep(10)
             self.connect()
 
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
-        logging.info("[{}] Disconnected".format(self.logger_name))
+        logging.error("[{}] Disconnected".format(self.logger_name))
         if self.poller_thread:
             self.run_device_poller = False
             logging.info("[{}] Stopping poller-thread".format(self.logger_name))
@@ -136,14 +150,16 @@ class SolarDevice(gatt.Device):
             self.command_trigger.set()
         if self.auto_reconnect:
             logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            time.sleep(10)
+            self.sleeper.wait(10)
+            # time.sleep(10)
             self.connect()
 
     def services_resolved(self):
         super().services_resolved()
+        self.run_connect = False
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
-        self.util = self.module.Util(self)  
+        self.util = self.module.Util(self)
 
         device_notification_service = None
         device_write_service = None
@@ -177,16 +193,16 @@ class SolarDevice(gatt.Device):
 
         if self.need_polling:
             self.poller_thread = threading.Thread(target=self.device_poller)
-            self.poller_thread.daemon = True 
+            self.poller_thread.daemon = True
             self.poller_thread.name = "Device-poller-thread {}".format(self.logger_name)
             self.poller_thread.start()
 
-        # We only need and MQTT-poller thread if we have a write characteristic to send data to
-        if self.char_write_commands:
+        # We only need an MQTT-poller thread if we have a write characteristic to send data to and MQTT is set up
+        if self.char_write_commands and self.datalogger.mqtt is not None:
             self.command_trigger = threading.Event()
-            self.datalogger.mqtt.trigger = self.command_trigger
+            self.datalogger.mqtt.trigger[self.logger_name] = self.command_trigger
             self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
-            self.command_thread.daemon = True 
+            self.command_thread.daemon = True
             self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
             self.command_thread.start()
 
@@ -209,7 +225,7 @@ class SolarDevice(gatt.Device):
             items = ['current', 'input_current', 'charge_current',
                      'voltage', 'input_voltage', 'charge_voltage',
                      'power',   'input_power',   'charge_power',
-                     'soc', 'capacity', 'charge_cycles', 'state', 'health', 'power_switch'
+                     'soc', 'capacity', 'exp_capacity', 'max_capacity', 'charge_cycles', 'state', 'health', 'power_switch'
                     ]
             for item in items:
                 try:
@@ -221,6 +237,8 @@ class SolarDevice(gatt.Device):
             # We want celsius, not kelvin
             try:
                 self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
+                self.datalogger.log(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius)
+
             except:
                 pass
 
@@ -229,6 +247,14 @@ class SolarDevice(gatt.Device):
                 for cell in self.entities.cell_mvoltage:
                     if self.entities.cell_mvoltage[cell]['val'] > 0:
                         self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell]['val'])
+            except:
+                pass
+
+            # Also return adjustted cell voltage(mvoltage -> voltage) for user preference
+            try:
+                for cell in self.entities.cell_voltage:
+                    if self.entities.cell_voltage[cell]['val'] > 0:
+                        self.datalogger.log(self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val'])
             except:
                 pass
 
@@ -284,19 +310,20 @@ class SolarDevice(gatt.Device):
         while self.run_command_poller:
             mqtt_sets = []
             datas = []
-            logging.debug("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
+            logging.info("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
             trigger.wait()
-            logging.debug("[{}] {} Event happened...".format(self.logger_name, threading.current_thread().name))
+            logging.info("[{}] {} Event happened...".format(self.logger_name, threading.current_thread().name))
             trigger.clear()
             try:
                 mqtt_sets = self.datalogger.mqtt.sets[self.logger_name]
                 self.datalogger.mqtt.sets[self.logger_name] = []
             except Exception as e:
+                logging.error("[{}] {} Something bad happened: {}".format(self.logger_name, threading.current_thread().name, e))
                 pass
             for msg in mqtt_sets:
                 var = msg[0]
                 message = msg[1]
-                logging.debug("[{}] MQTT-msg: {} -> {}".format(self.logger_name, var, message))
+                logging.info("[{}] MQTT-msg: {} -> {}".format(self.logger_name, var, message))
                 datas = self.util.cmdRequest(var, message)
                 if len(datas) > 0:
                     for data in datas:
@@ -305,6 +332,7 @@ class SolarDevice(gatt.Device):
                         time.sleep(0.2)
                 else:
                     logging.debug("[{}] Unknown MQTT-command {} -> {}".format(self.logger_name, var, message))
+                logging.info("[{}] MQTT msq complete".format(self.logger_name))
         logging.info("[{}] Ending thread {}".format(self.logger_name, threading.current_thread().name))
 
 
@@ -333,11 +361,17 @@ class PowerDevice():
             'max': 3731,
             'maxdiff': 20
         }
+        self._bkelvin = {
+            'val': 2731,
+            'min': 1731,
+            'max': 3731,
+            'maxdiff': 20
+        }
         self._mcapacity = {
             'val': 0,
             'min': 0,
             'max': 250000,
-            'maxdiff': 10
+            'maxdiff': 20000
         }
         self._mcurrent = {
             'val': 0,
@@ -452,14 +486,14 @@ class PowerDevice():
     def datalogger(self):
         return self.parent.datalogger
 
-    @property 
+    @property
     def dsoc(self):
         return self._dsoc['val']
     @dsoc.setter
     def dsoc(self, value):
         self.validate('_dsoc', value)
 
-    @property 
+    @property
     def soc(self):
         return (self.dsoc / 10)
     @soc.setter
@@ -472,6 +506,13 @@ class PowerDevice():
     @temperature.setter
     def temperature(self, value):
         self.validate('_dkelvin', value)
+
+    @property
+    def battery_temperature(self):
+        return self._bkelvin['val']
+    @battery_temperature.setter
+    def battery_temperature(self, value):
+        self.validate('_bkelvin', value)
 
     @property
     def temperature_celsius(self):
@@ -487,8 +528,19 @@ class PowerDevice():
     def temperature_fahrenheit(self, value):
         self.temperature = (value + 459.67) * (5/9) * 10
 
+    @property
+    def battery_temperature_celsius(self):
+        return round((self.battery_temperature - 2731) * 0.1, 1)
+    @battery_temperature_celsius.setter
+    def battery_temperature_celsius(self, value):
+        self.battery_temperature = (value * 10) + 2731
 
-
+    @property
+    def battery_temperature_fahrenheit(self):
+        return round(((self.temperature * 0.18) - 459.67), 1)
+    @battery_temperature_fahrenheit.setter
+    def battery_temperature_fahrenheit(self, value):
+        self.temperature = (value + 459.67) * (5/9) * 10
 
     @property
     def mcapacity(self):
@@ -678,7 +730,7 @@ class PowerDevice():
                 out = "{} {} == {},".format(out, var, self.__dict__[var])
         logging.debug(out)
 
-    
+
     def validate(self, var, val):
         definition = getattr(self, var)
         val = float(val)
@@ -696,7 +748,7 @@ class PowerDevice():
             return False
         logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
         self.__dict__[var]['val'] = val
-        
+
 
 class InverterDevice(PowerDevice):
     '''
@@ -722,7 +774,7 @@ class InverterDevice(PowerDevice):
 
 class RectifierDevice(PowerDevice):
     '''
-    Special class for Rectifier-devices  (AC-DC).  
+    Special class for Rectifier-devices  (AC-DC).
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     def __init__(self, parent=None):
@@ -744,7 +796,7 @@ class RectifierDevice(PowerDevice):
 
 class RegulatorDevice(PowerDevice):
     '''
-    Special class for Regulator-devices.  
+    Special class for Regulator-devices.
     Extending PowerDevice class with more properties specifically for the regulators
     '''
     def __init__(self, parent=None):
@@ -753,8 +805,8 @@ class RegulatorDevice(PowerDevice):
 
 
 
-            
-            
+
+
 
 
     def parse_notification(self, value):
@@ -774,7 +826,7 @@ class RegulatorDevice(PowerDevice):
 
 class BatteryDevice(PowerDevice):
     '''
-    Special class for Battery-devices.  
+    Special class for Battery-devices.
     Extending PowerDevice class with more properties specifically for the batteries
     '''
 
@@ -787,7 +839,19 @@ class BatteryDevice(PowerDevice):
             'val': 0,
             'min': -500000,
             'max': 500000,
-            'maxdiff': 100000
+            'maxdiff': 400000
+        }
+        self._max_capacity = {
+            'val': 0,
+            'min': 0,
+            'max': 400,
+            'maxdiff': 5
+        }
+        self._exp_capacity = {
+            'val': 0,
+            'min': 0,
+            'max': 400,
+            'maxdiff': 5
         }
         self._mvoltage = {
             'val': 0,
@@ -832,7 +896,7 @@ class BatteryDevice(PowerDevice):
     @property
     def current(self):
         return super().current
-        
+
     @mcurrent.setter
     def mcurrent(self, value):
         super(BatteryDevice, self.__class__).mcurrent.fset(self, value)
@@ -869,6 +933,38 @@ class BatteryDevice(PowerDevice):
         cell = value[0]
         new_value = value[1]
         current_value = self._cell_mvoltage[cell]['val']
+        if current_value == 0 and new_value > 0 and new_value > self._cell_mvoltage[cell]['min'] and new_value < self._cell_mvoltage[cell]['max']:
+            # Starting up. Adding new values
+            self._cell_mvoltage[cell]['val'] = new_value
+            return True
+        if current_value == 0 and new_value == 0:
+            # Ignore these
+            return False
+        if new_value > self._cell_mvoltage[cell]['max']:
+            logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (> max {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['max']))
+            return False
+        if new_value < self._cell_mvoltage[cell]['min']:
+            logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (< min {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['min']))
+            return False
+        if abs(new_value - current_value) > self._cell_mvoltage[cell]['maxdiff']:
+            logging.warning("[{}] Value of cell {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, cell, current_value, new_value, self._cell_mvoltage[cell]['maxdiff']))
+            return False
+        if new_value > 0 and abs(new_value - current_value) > 10:
+            self._cell_mvoltage[cell]['val'] = new_value
+
+    @property
+    def cell_voltage(self):
+        cell_array = {}
+        for cell in self._cell_mvoltage:
+            cell_array[cell] = {
+                'val' : (self._cell_mvoltage[cell]['val'] * .001)
+            }
+        return cell_array
+    @cell_voltage.setter
+    def cell_voltage(self, value):
+        cell = value[0]
+        new_value = value[1] * 1000
+        current_value = self._cell_mvoltage[cell]['val']
         if new_value > 0 and abs(new_value - current_value) > 10:
             self._cell_mvoltage[cell]['val'] = new_value
 
@@ -878,6 +974,21 @@ class BatteryDevice(PowerDevice):
     @afestatus.setter
     def afestatus(self, value):
         self._afestatus = value
+
+    @property
+    def max_capacity(self):
+        return self._max_capacity['val']
+    @max_capacity.setter
+    def max_capacity(self, value):
+        self.validate('_max_capacity', value)
+
+
+    @property
+    def exp_capacity(self):
+        return self._exp_capacity['val']
+    @exp_capacity.setter
+    def exp_capacity(self, value):
+        self.validate('_exp_capacity', value)
 
     @property
     def health(self):
@@ -893,6 +1004,4 @@ class BatteryDevice(PowerDevice):
     def health_changed(self, was):
         if was != self.health:
             logging.info("[{}] Value of {} changed from {} to {}".format(self.name, 'health', was, self.health))
-
-
 

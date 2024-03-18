@@ -1,4 +1,4 @@
-import logging                                                     
+import logging
 import time
 
 class Config():
@@ -43,7 +43,7 @@ class Util():
         'CanBusOff': { 'key': 0x0133, 'format': { 'bussoff': 'un32'}},
     }
 
-    def __init__(self, power_device):                  
+    def __init__(self, power_device):
         self.PowerDevice = power_device
         self._char_buffer = b""
         self._is_initialized = False
@@ -62,13 +62,15 @@ class Util():
         return True
 
     def pollRequest(self):
+        logging.debug("{} {} => {}".format('pollRequest', self.poll_loop_count, self._is_initialized))
         data = None
         if not self._is_initialized and self.poll_loop_count == 2:
             self.send_magic_packets()
             self._is_initialized = True
-        elif self.poll_loop_count == 30:
-           data = self.create_poll_request("PollData")
-           self.poll_loop_count = 0
+        elif self.poll_loop_count == 5:
+            self.keep_alive()
+            self.poll_loop_count = 0
+        #    data = self.create_poll_request("PollData")
         self.poll_loop_count = self.poll_loop_count + 1
         return data
         # # Create a poll-request to ask for new data
@@ -105,8 +107,8 @@ class Util():
         if cmd == 'PollData':
             val = 'f941'
         if cmd == 'PowerOn':
-            val = "0603821902004105"        # Eco instead of "on"
-            # val = "0603821902004102"
+            # val = "0603821902004105"        # Eco instead of "on"
+            val = "0603821902004102"
         if cmd == 'PowerOff':
             val = "0603821902004104"
         if cmd == 'PowerEco':
@@ -118,42 +120,44 @@ class Util():
     def send_magic_packets(self):
         # Some kind of magic session init
         write_characteristic = self.PowerDevice.device_write_characteristic_polling
-        # c = charactersistcs["306b0002-b081-4037-83dc-e59fcc3cdfd0"]
+
         hs = "fa80ff"
         value  = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         hs = "f980"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
         # c.write_value(b);
-        
-        hs = "01"
-        value = bytearray.fromhex(hs)
-        self.PowerDevice.characteristic_write_value(value, write_characteristic)
-        time.sleep(0.1)
+
+        # Skal ikke dit...
+        # hs = "01"
+        # value = bytearray.fromhex(hs)
+        # self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        # time.sleep(0.1)
         # c.write_value(b);
-        
+
+        # Send some data to the command-characteristics
         write_characteristic = self.PowerDevice.device_write_characteristic_commands
-        # c = charactersistcs["306b0003-b081-4037-83dc-e59fcc3cdfd0"]
-        
+
         hs = "01"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         hs = "0300"
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
         hs = "060082189342102703010303"
         value  = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        
+
+        # Poll for data
         write_characteristic = self.PowerDevice.device_write_characteristic_polling
         # c = charactersistcs["306b0002-b081-4037-83dc-e59fcc3cdfd0"]
         hs = "f941"
@@ -161,7 +165,22 @@ class Util():
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
         # c.write_value(b);
-        
+
+    def keep_alive(self):
+        # ("0024", "0600821893421027"),
+        # ("0021", "f941"),
+        write_characteristic = self.PowerDevice.device_write_characteristic_commands
+        hs = "060082189342102703010303"
+        value  = bytearray.fromhex(hs)
+        self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        time.sleep(0.1)
+
+        write_characteristic = self.PowerDevice.device_write_characteristic_polling
+        hs = "f941"
+        value  = bytearray.fromhex(hs)
+        self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        time.sleep(0.1)
+
 
     def validate(self):
         pass
@@ -183,9 +202,21 @@ class Util():
 
 
     def set_values(self, value):
+
+        logging.debug(f"Got packet of len: {len(value)} {value}")
         if len(value) == 8:
             ptype = int.from_bytes(value[3:5], byteorder="little")
             pval  = int.from_bytes(value[6:8], byteorder="little")
+            logging.debug("8 Byte Data: {} {} {} {} {} {} {} {}".format(
+                value[0],
+                value[1],
+                value[2],
+                value[3],
+                value[4],
+                value[5],
+                value[6],
+                value[7]))
+            logging.debug("ptype {}: pval {}".format(ptype, pval))
             if ptype == 34:
                 logging.debug("Output voltage: {} V".format(pval * 0.01))
                 self.PowerDevice.entities.voltage = pval * 0.01
@@ -198,13 +229,26 @@ class Util():
             elif ptype == 36333:
                 logging.debug("Input voltage: {} V".format(pval * 0.01))
                 self.PowerDevice.entities.input_voltage = pval * 0.01
+            elif ptype == 36845: #current
+                # 2^16 value
+                # negative starts from 2^16
+                # and goes down
+                if pval > 2**16/2: # probably negative
+                    pval = 2**16 - pval
+                    pval *= -1
+                logging.debug("Current: {} A".format(pval * 0.1))
+                self.PowerDevice.entities.current = pval * 0.1
+
             elif ptype == 290:
                 if pval == 0:
                     # logging.info("Output Power turned off #1")
                     logging.debug("No output current")
                     self.PowerDevice.entities.current = 0
+                elif pval == 65535:
+                    logging.debug("Unknown data pval 65535: {}".format(value))
+                    # self.PowerDevice.entities.power_switch = 1
                 elif pval == 65534:
-                    logging.debug("Output Power turned on #1")
+                    logging.debug("Output Power turned on #2")
                     self.PowerDevice.entities.power_switch = 1
                 elif pval == 65533:
                     # logging.info("Output Power ended")
@@ -214,8 +258,8 @@ class Util():
                     logging.debug("Current: {} A".format(pval * 0.1))
                     self.PowerDevice.entities.current = pval * 0.1
             else:
-                logging.debug("?? {}: {}".format(ptype, pval))
-        if len(value) == 7:
+                logging.debug("Unknown-8 {}: {}".format(ptype, pval))
+        elif len(value) == 7:
             ptype = int(str(value[4]), 16)
             pval  = int(str(value[6]), 16)
             state = "?"
@@ -229,7 +273,7 @@ class Util():
                 if pval == 5:
                     logging.info("Output Power turned to eco")
                     self.PowerDevice.entities.power_switch = 1
-            if ptype == 1:
+            elif ptype == 1:
                 if pval == 0:
                     logging.debug("Output Power state turned off ptype 1 pval 0")
                     self.PowerDevice.entities.power_switch = 0
@@ -239,3 +283,7 @@ class Util():
                 if pval == 9:
                     logging.debug("Output Power state turned on ptype 1 pval 9")
                     self.PowerDevice.entities.power_switch = 1
+            else:
+                logging.debug("Unknown-7 {}: {}".format(ptype, pval))
+        else:
+            logging.debug("Unknown packet: {}".format(value))

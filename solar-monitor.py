@@ -3,7 +3,7 @@
 from argparse import ArgumentParser
 import configparser
 import time
-import logging 
+import logging
 import sys
 
 from solardevice import SolarDeviceManager, SolarDevice
@@ -11,10 +11,6 @@ from datalogger import DataLogger
 import duallog
 
 
-
-# Read config
-config = configparser.ConfigParser()
-config.read('solar-monitor.ini')
 
 
 
@@ -27,7 +23,24 @@ arg_parser.add_argument(
 arg_parser.add_argument(
     '-d', '--debug', action='store_true',
     help="Enable debug")
+arg_parser.add_argument(
+    '--ini',
+    help="Path to .ini-file. Defaults to 'solar-monior.ini'")
 args = arg_parser.parse_args()
+
+# Read config
+config = configparser.ConfigParser()
+
+ini_file = "solar-monitor.ini"
+if args.ini:
+    ini_file = args.ini
+
+try:
+    config.read(ini_file)
+except:
+    print(f"Unable to read ini-file {ini_file}")
+    sys.exit(1)
+
 
 if args.adapter:
     config.set('monitor', 'adapter', args.adapter)
@@ -45,7 +58,12 @@ duallog.setup('solar-monitor', minLevel=level, fileLevel=level, rotation='daily'
 
 # Set up data logging
 # datalogger = None
-datalogger = DataLogger(config)
+try:
+    datalogger = DataLogger(config)
+except Exception as e:
+    logging.error("Unable to set up datalogger")
+    logging.error(e)
+    sys.exit(1)
 
 
 # Set up device manager and adapter
@@ -86,6 +104,7 @@ logging.info("Found {} BLE-devices".format(len(device_manager.devices())))
 
 
 for dev in device_manager.devices():
+    logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
     for section in config.sections():
         if config.get(section, "mac", fallback=None) and config.get(section, "type", fallback=None):
             mac = config.get(section, "mac").lower()
@@ -103,6 +122,8 @@ try:
 except KeyboardInterrupt:
     pass
 
+for dev in device_manager.devices():
+    device.disconnect()
 
 
 

@@ -20,15 +20,17 @@ class Config():
 
 class Util():
     '''
-    Class for reading and parsing data from various SmartPower-BLE-streams
+    Class for reading and parsing data from various Topband-Smartpower-BLE-streams
     '''
 
     def __init__(self, power_device):
+        self.protocolHead = 94
+        self.protocolEnd = 0
         self.SOI = 1
         self.INFO = 2
         self.EOI = 3
         self.RecvDataType = self.SOI
-        self.RevBuf = [None] * 122
+        self.RevBuf = [None] * 115
         self.Revindex = 0
         # self.TAG = "SmartPowerUtil"
         self.PowerDevice = power_device
@@ -96,56 +98,30 @@ class Util():
 
     def notificationUpdate(self, data, char):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
-        # logging.debug("broadcastUpdate Start {} {}".format(data, self.RevBuf))
-        # logging.debug("RevIndex {}".format(self.Revindex))
-        # logging.debug("SOI {}".format(self.SOI))
-        # logging.debug("RecvDataType start {}".format(self.Revindex))
         cmdData = ""
         if data != None and len(data):
             i = 0
             while i < len(data):
-                # logging.debug("Revindex {} {} Data: {}".format(i, self.Revindex, data[i]))
-                # logging.debug("RevBuf begin {}".format(self.RevBuf))
-                if self.Revindex > 121:
-                    # logging.debug("Revindex  > 121 - parsing done")
+                if self.Revindex > 114:
                     self.Revindex = 0
                     self.end = 0
                     self.RecvDataType = self.SOI
-                # if data[i] == 146:
-                    # logging.debug("Data_1 == 146 start of info")
-                    # self.RecvDataType = self.INFO
-                    # self.Revindex = 0
-                # logging.debug("RecvDataType {} {}".format(i, self.RecvDataType))
                 if self.RecvDataType == self.SOI:
-                    # logging.debug("RecvDataType == 1 -> SOI")
-                    # logging.debug("Data_1 == {} &255 == {}".format(data[i], data[i] & 255))
-                    if data[i] == 146:
-                        # logging.debug("Data_1 & 255 == 146 start of info")
+                    if data[i] == self.protocolHead:
                         self.RecvDataType = self.INFO
                         self.RevBuf[self.Revindex] = data[i]
                         self.Revindex = self.Revindex + 1
                 elif self.RecvDataType == self.INFO:
-                    # logging.debug("RecvDataType == 2 -> INFO")
-                    # logging.debug("Revindex {} Data_1 == {}".format(self.Revindex, data[i]))
                     self.RevBuf[self.Revindex] = data[i]
                     self.Revindex = self.Revindex + 1
 
-                    if data[i] == 12:
-                        # logging.debug("Data_i == 12 - end: {} Revindex {}".format(self.end, self.Revindex))
+                    if data[i] == self.protocolEnd:
                         if self.end < 110:
                             self.end = self.Revindex
-                        # if self.Revindex != 121 and self.Revindex != 66 and self.Revindex != 88:
-                        # else:
-                    # if self.Revindex == 121 or self.Revindex == 66 or self.Revindex == 88:
-                        if self.Revindex == 121:
+                        if self.Revindex == 114:
                             self.RecvDataType = self.EOI
-                    # else:
                 elif self.RecvDataType == self.EOI:
-                    # logging.debug("RecvDataType == 3 -> EOI")
-                    # logging.debug("Validate Checksum: {}".format(self.validateChecksum(self.RevBuf)))
                     if self.validateChecksum(self.RevBuf):
-                        # cmdData = str(self.RevBuf, 1, self.Revindex)
-                        # logging.debug("{} revindex: {}".format(self.TAG, self.Revindex))
                         cmdData = self.RevBuf[1:self.Revindex]
                         self.Revindex = 0
                         self.end = 0
@@ -155,7 +131,6 @@ class Util():
                     self.end = 0
                     self.RecvDataType = self.SOI
                 i += 1
-        # logging.debug("broadcastUpdate End cmdData: {} RevBuf {}".format(cmdData, self.RevBuf))
         return False
 
 
@@ -194,6 +169,3 @@ class Util():
             i = i + 1
 
         return True
-
-
-

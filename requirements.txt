@@ -1,7 +1,9 @@
 gatt
 configparser
-libscrc
-json
 requests
 paho-mqtt
-threading
+libscrc
+python-dateutil
+dbus-python
+pycairo 
+PyGObject

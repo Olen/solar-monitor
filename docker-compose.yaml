@@ -1,0 +1,15 @@
+services:
+  solar-monitor:
+    build: 
+      context: .
+      network: host
+    container_name: solar-monitor
+    network_mode: host
+    volumes:
+      - /var/run/dbus:/var/run/dbus
+      - ~/solar-monitor/solar-monitor.ini:/solar-monitor/solar-monitor.ini
+      - ~/solar-monitor/logs:/solar-monitor/solar-monitor
+    restart: unless-stopped
+
+
+
