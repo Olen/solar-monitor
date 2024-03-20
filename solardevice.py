@@ -178,16 +178,16 @@ class SolarDevice(gatt.Device):
         if device_notification_service:
             for c in device_notification_service.characteristics:
                 if self.char_notify and c.uuid in self.char_notify:
-                    logging.info("[{}] Found dev notify char [{}]".format(self.logger_name, c.uuid))
-                    logging.info("[{}] Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
+                    logging.info("[{}]    - Found dev notify char [{}]".format(self.logger_name, c.uuid))
+                    logging.info("[{}]    + Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
                     c.enable_notifications()
         if device_write_service:
             for c in device_write_service.characteristics:
                 if self.char_write_polling and c.uuid == self.char_write_polling:
-                    logging.info("[{}] Found dev write polling char [{}]".format(self.logger_name, c.uuid))
+                    logging.info("[{}]    - Found dev write polling char [{}]".format(self.logger_name, c.uuid))
                     self.device_write_characteristic_polling = c
                 if self.char_write_commands and c.uuid == self.char_write_commands:
-                    logging.info("[{}] Found dev write polling char [{}]".format(self.logger_name, c.uuid))
+                    logging.info("[{}]    - Found dev write polling char [{}]".format(self.logger_name, c.uuid))
                     self.device_write_characteristic_commands = c
 
 
