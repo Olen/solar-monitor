@@ -5,7 +5,7 @@ import pprint
 import re
 
 
-f = open("ip.json")
+f = open("bms-raw-2024-03-20.json")
 data = json.load(f)
 
 # pprint.pprint(data)
