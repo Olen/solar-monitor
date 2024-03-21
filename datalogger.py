@@ -214,6 +214,7 @@ class DataLogger():
         device = device.strip()
         # ts = datetime.now().isoformat(' ', 'seconds')
         ts = datetime.now()
+        logging.debug("[{}] All data {}: {}".format(device, var, val))
         if device not in self.logdata:
             self.logdata[device] = {}
         if var not in self.logdata[device]:
