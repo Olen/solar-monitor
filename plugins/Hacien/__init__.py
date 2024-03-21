@@ -36,8 +36,8 @@ class Util():
         self.end = 0
 
 
-    def validCrc(self, msg: list) -> bool:
-        return self.modbusCrc(msg) == 0
+    def validate(self, msg: list) -> bool:
+        return len(msg) > 0 and self.modbusCrc(msg) == 0
     
     def modbusCrc(self, msg: list) -> int:
         crc = 0xFFFF
@@ -53,13 +53,14 @@ class Util():
     
 
     def notificationUpdate(self, data, char):
-        # Gets the binary data from the BLE-device and converts it to a list of hex-values
+
         logging.debug("broadcastUpdate Start {} {}".format(data, data.hex()))
         if data[0] == 1 and data[1] == 3:
             # New message
             self.buffer = []
-        self.buffer = self.buffer + data
-        if self.validCrc(self.buffer):
+        for char in data:
+            self.buffer.append(char)
+        if self.validate(self.buffer):
             return self.handleMessage(self.buffer)
         return False
 
@@ -70,35 +71,46 @@ class Util():
             return False
         # logging.debug("test handleMessage == {}".format(message))
         self.PowerDevice.entities.msg = message
+        '''
+        Fortunately we read a different number of bytes from each register, so we can
+        abuse the "length" field (byte #3 in the response) as an "id"
+        '''
 
-        if len(buffer) > 10 and buffer[2] == 0x4c:
-            print(f"-> {tx_splitted}")
-            cell1 = buffer[3]*256 + buffer[4]
-            cell2 = buffer[5]*256 + buffer[6]
-            cell3 = buffer[7]*256 + buffer[8]
-            cell4 = buffer[9]*256 + buffer[10]
-            self.PowerDevice.entities.mvoltage = (buffer[-4]*256 + buffer[-3]) * 10
+        if len(self.buffer) > 10 and self.buffer[2] == 0x4c:
+            # cell1 = self.buffer[3]*256 + self.buffer[4]
+            # cell2 = self.buffer[5]*256 + self.buffer[6]
+            # cell3 = self.buffer[7]*256 + self.buffer[8]
+            # cell4 = self.buffer[9]*256 + self.buffer[10]
+            self.PowerDevice.entities.mvoltage = (self.buffer[-4]*256 + self.buffer[-3]) * 10
             i = 0
-            while i < 16:
-                self.PowerDevice.entities.cell_mvoltage = (i + 1, buffer[i + 3]*256 + buffer[i + 4])
-                i = i + 1
+            while i < 8:
+                cellid = i / 2
+                # print(i, cellid)
+                # print(self.buffer[i + 3], self.buffer[i + 4])
+                if self.buffer[i + 3] != 238 and self.buffer[i + 4] != 73:
+                    self.PowerDevice.entities.cell_mvoltage = (int(cellid) + 1, self.buffer[i + 3]*256 + self.buffer[i + 4])
+                    # print(self.PowerDevice.entities.cell_mvoltage)
+                i = i + 2
             return True
 
-        elif len(buffer) > 10 and buffer[2] == 0x32:
-            self.PowerDevice.entities.mcurrent (buffer[29]*256 + buffer[30]) * 10
-            self.PowerDevice.entities.mcapacity = buffer[37]*256 + buffer[38]
-            # self.PowerDevice.entities.max_capacity = buffer[37]*256 + buffer[38]
-            self.PowerDevice.entities.charge_cycles = buffer[42]
-            self.PowerDevice.entities.soc = buffer[32]
-            self.PowerDevice.entities.temperature = ((buffer[3]*256+buffer[4]) - 380) / 10
+        elif len(self.buffer) > 10 and self.buffer[2] == 0x32:
+            self.PowerDevice.entities.mcurrent = (self.buffer[29]*256 + self.buffer[30]) * 10
+            self.PowerDevice.entities.exp_capacity = self.buffer[35]*256 + self.buffer[36] / 100
+            self.PowerDevice.entities.mcapacity = (self.buffer[37]*256 + self.buffer[38]) * 10
+            print(self.buffer[37]*256 + self.buffer[38])
+            # self.PowerDevice.entities.max_capacity = self.buffer[37]*256 + self.buffer[38]
+            self.PowerDevice.entities.charge_cycles = self.buffer[42]
+            self.PowerDevice.entities.soc = self.buffer[32]
+            self.PowerDevice.entities.temperature_celsius = int(((self.buffer[3]*256 + self.buffer[4]) - 380) / 10)
+            self.PowerDevice.entities.battery_temperature_celsius = self.PowerDevice.entities.temperature_celsius
             
-            # current_ah = buffer[35]*256 + buffer[36]
-            # total_ah1 = buffer[37]*256 + buffer[38]
-            # total_ah2 = buffer[39]*256 + buffer[40]
-            # cycles    = buffer[42]
+            # current_ah = self.buffer[35]*256 + self.buffer[36]
+            # total_ah1 = self.buffer[37]*256 + self.buffer[38]
+            # total_ah2 = self.buffer[39]*256 + self.buffer[40]
+            # cycles    = self.buffer[42]
             # print(use, soc1, soc2, current_ah, total_ah1, total_ah2, cycles)
 
-            # temp1 = buffer[3]*256+buffer[4]
+            # temp1 = self.buffer[3]*256+buffer[4]
             # print("T1", temp1)
             # temp2 = temp1 - 380
             # print("T2", temp2)
