@@ -23,7 +23,7 @@ class Util():
     Class for reading and parsing data from various SmartPower-BLE-streams
 
     These devices encode the data in a really crazy way.
-    Data is streamed continously, and you need to fnd certain "start of data" and "end of data"
+    Data is streamed continously, and you need to find certain "start of data" and "end of data"
     markers to get the correct values.
     The data is then divided into chuks of up to 122 bytes
 
@@ -32,13 +32,13 @@ class Util():
     Data is read as "little endian" and is ascii-encoded hex characters
     In the above example, the voltage is encoded in the first 8 bytes as follows:
         Read bytes 7 and 8 (48, 48)
-        Encode these as ascii-characters "00" (String: "00"
+        Encode these as ascii-characters "0, 0" (String: "00"
         Read bytes 5 and 6 (48, 48)
-        Encode these as ascii-characters "00" (Append to string: "0000")
+        Encode these as ascii-characters "0, 0" (Append to string: "0000")
         Read bytes 3 and 4 (51, 54)
-        Encode these as ascii-characters "36" (Append to string: "000036")
+        Encode these as ascii-characters "3, 6" (Append to string: "000036")
         Read bytes 1 and 2 (56, 49)
-        Encode these as ascii-characters "81" (Append to string: "00003681")
+        Encode these as ascii-characters "8, 1" (Append to string: "00003681")
 
         convert this hex-string to decimal: 0x00003681 = 13953 = 13.953 V
     '''
