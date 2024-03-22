@@ -122,9 +122,9 @@ try:
 except KeyboardInterrupt:
     pass
 
-for device in device_manager.devices():
+for dev in device_manager.devices():
     try:
-        device.disconnect()
+        dev.disconnect()
     except:
         pass
 
