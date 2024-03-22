@@ -18,7 +18,7 @@ import logging
 
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
-from datalogger import DataLogger
+# from datalogger import DataLogger
 
 
 
@@ -65,6 +65,7 @@ class SolarDevice(gatt.Device):
         self.connect_thread = None
         self.command_trigger = None
         self.sleeper = threading.Event()
+        self.config = config
         if config:
             self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
             self.type = config.get(logger_name, 'type', fallback=None)
