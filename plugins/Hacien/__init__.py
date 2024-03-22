@@ -51,10 +51,18 @@ class Util():
                 else:
                     crc >>= 1
         return crc
-    
+
+    def getValue(self, buf: bytearray, start: int, length: int = 1) -> int:
+        ''' Reads length bytes from buf '''
+        if length == 1:
+            return int(buf[start])
+        if length == 2:
+            return int(buf[start]*256 + buf[start + 1])
+        return 0
+
+
 
     def notificationUpdate(self, data, char):
-
         logging.debug("broadcastUpdate Start {} {}".format(data, data.hex()))
         if self.PowerDevice.config.getboolean('monitor', 'debug', fallback=False):
             with open(f"/tmp/{self.PowerDevice.alias()}.log", 'a') as debugfile:
@@ -65,6 +73,7 @@ class Util():
         for char in data:
             self.buffer.append(char)
         if self.validate(self.buffer):
+            # The checksum is correct, so we assume we have a complete message
             return self.handleMessage(self.buffer)
         return False
 
