@@ -138,7 +138,7 @@ And then just 0 until the checksum.
 
 ### Summary
 
-This is a very simple example.  I have seen devices that use far more complex protocols than just reading the values directly.  See for instance the Meritsun plugin in this project.
+This is a very simple example.  I have seen devices that use far more complex protocols than just reading the values directly.  See for instance the [Meritsun plugin](https://github.com/Olen/solar-monitor/blob/07d39817d3f345994e886ebea3bdb830234820d3/plugins/Meritsun/__init__.py#L25) in this project.
 
 And even for this, for instance the temperature is quite hard to figure out.  It is actually hidden in the "0258" in the beginning of the last Notification,
 
