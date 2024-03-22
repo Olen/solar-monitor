@@ -33,6 +33,7 @@ class Util():
         # self.TAG = "SmartPowerUtil"
         self.PowerDevice = power_device
         self.end = 0
+        self.prev_values = {}
 
 
 
@@ -96,6 +97,11 @@ class Util():
 
     def notificationUpdate(self, data, char):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
+        logging.debug("broadcastUpdate Start {} {}".format(data, data.hex()))
+        if self.PowerDevice.config.getboolean('monitor', 'debug', fallback=False):
+            with open(f"/tmp/{self.PowerDevice.alias()}.log", 'a') as debugfile:
+                debugfile.write(f"{datetime.now()} <- {data.hex()}\n")
+
         # logging.debug("broadcastUpdate Start {} {}".format(data, self.RevBuf))
         # logging.debug("RevIndex {}".format(self.Revindex))
         # logging.debug("SOI {}".format(self.SOI))
@@ -168,6 +174,13 @@ class Util():
         logging.debug("handleMessage {}".format(message))
         if message == None or "" == message:
             return False
+        if message[2] in self.prev_values:
+            if message != self.prev_values[message[2]]:
+                logging.debug("Response changed:")
+                logging.debug(f"- {self.prev_values[message[2]]}")
+                logging.debug(f"+ {message}:")
+        self.prev_values[message[2]] = message
+
         # logging.debug("test handleMessage == {}".format(message))
         if len(message) < 38:
             logging.info("len message < 38: {}".format(len(message)))
