@@ -19,7 +19,12 @@ class Config():
 
 class Util():
     '''
-    Class for reading and parsing data from various SmartPower-BLE-streams
+    Class for reading and parsing data from various Hacien-batteries (App: HC BLE)
+
+    Reading values is pretty straight forward
+    The batteries need to be polled, polling strings from the app is easily found
+    Values are simple 1 or 2 byte integers, little endian, so they can be read more or less directly
+
     '''
 
     def __init__(self, power_device):
@@ -39,12 +44,12 @@ class Util():
 
     def validate(self, msg: list) -> bool:
         return len(msg) > 0 and self.modbusCrc(msg) == 0
-    
+
     def modbusCrc(self, msg: list) -> int:
         crc = 0xFFFF
         for n in msg:
             crc ^= n
-            for i in range(8): 
+            for i in range(8):
                 if crc & 1:
                     crc >>= 1
                     crc ^= 0xA001
