@@ -48,16 +48,17 @@ class DataLoggerMqtt():
             val = val + "/"
         self._prefix = val
 
-    def publish(self, device, var, val):
+    def publish(self, device, var, val, refresh=False):
         topic = "{}{}/{}/state".format(self.prefix, device, var)
-        if topic not in self.sensors:
+        if topic not in self.sensors or refresh:
             if "power_switch" in var:
                 # self.delete_switch(device, var)
                 # time.sleep(1)
                 self.create_switch(device, var)
                 self.create_listener(device, var)
             else:
-                self.delete_sensor(device, var)
+                if not refresh:
+                    self.delete_sensor(device, var)
                 time.sleep(1)
                 self.create_sensor(device, var)
             self.sensors.append(topic)
@@ -227,19 +228,19 @@ class DataLogger():
             self.logdata[device][var]['value'] = val
             logging.info("[{}] Sending new data {}: {}".format(device, var, val))
             self.send_to_server(device, var, val)
-        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=15):
+        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=1):
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = val
             # logging.debug("Sending data to server due to long wait")
             logging.info("[{}] Sending refreshed data {}: {}".format(device, var, val))
-            self.send_to_server(device, var, val)
+            self.send_to_server(device, var, val, True)
 
 
 
 
-    def send_to_server(self, device, var, val):
+    def send_to_server(self, device, var, val, refresh=False):
         if self.mqtt:
-            self.mqtt.publish(device, var, val)
+            self.mqtt.publish(device, var, val, refresh)
         if self.url:
             logging.info("[{}] Sending data to {}".format(device, self.url))
             ts = datetime.now().isoformat(' ', 'seconds')
