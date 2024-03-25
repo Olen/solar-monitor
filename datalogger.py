@@ -199,12 +199,12 @@ class DataLogger():
             self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'), username=config.get('mqtt', 'username'), password=config.get('mqtt', 'password'), hostname=config.get('mqtt', 'hostname'))
         self.logdata = {}
 
-       
-    # logdata  
+
+    # logdata
     # - device_id
-    #       var1:   
+    #       var1:
     #           ts: timestamp
-    #           value: value     
+    #           value: value
     #
     #
     # }
@@ -228,12 +228,12 @@ class DataLogger():
             self.logdata[device][var]['value'] = val
             logging.info("[{}] Sending new data {}: {}".format(device, var, val))
             self.send_to_server(device, var, val)
-        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=1):
+        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=15):
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = val
             # logging.debug("Sending data to server due to long wait")
             logging.info("[{}] Sending refreshed data {}: {}".format(device, var, val))
-            self.send_to_server(device, var, val, True)
+            self.send_to_server(device, var, val)
 
 
 
