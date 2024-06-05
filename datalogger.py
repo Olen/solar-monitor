@@ -196,7 +196,14 @@ class DataLogger():
             self.url = config.get('datalogger', 'url')
             self.token = config.get('datalogger', 'token')
         if config.get('mqtt', 'broker', fallback=None):
-            self.mqtt = DataLoggerMqtt(config.get('mqtt', 'broker'), 1883, prefix=config.get('mqtt', 'prefix'), username=config.get('mqtt', 'username'), password=config.get('mqtt', 'password'), hostname=config.get('mqtt', 'hostname'))
+            self.mqtt = DataLoggerMqtt(
+                config.get('mqtt', 'broker'),
+                config.get('mqtt', 'port', fallback=1883),
+                prefix=config.get('mqtt', 'prefix', fallback=None),
+                username=config.get('mqtt', 'username', fallback=None),
+                password=config.get('mqtt', 'password', fallback=None),
+                hostname=config.get('mqtt', 'hostname', fallback=None)
+            )
         self.logdata = {}
 
        
