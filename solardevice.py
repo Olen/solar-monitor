@@ -534,7 +534,7 @@ class PowerDevice():
         return round((self.battery_temperature - 2731) * 0.1, 1)
     @battery_temperature_celsius.setter
     def battery_temperature_celsius(self, value):
-        self.validate('_bkelvin, (value * 10) + 2731)
+        self.validate('_bkelvin', (value * 10) + 2731)
 
     @property
     def battery_temperature_fahrenheit(self):
