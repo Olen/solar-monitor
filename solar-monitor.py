@@ -10,6 +10,9 @@ from solardevice import SolarDeviceManager, SolarDevice
 from datalogger import DataLogger
 import duallog
 
+import concurrent.futures
+import queue
+import threading
 
 
 
@@ -56,6 +59,9 @@ else:
     level = logging.INFO
 duallog.setup('solar-monitor', minLevel=level, fileLevel=level, rotation='daily', keep=30)
 
+# Create the message queue
+pipeline = queue.Queue(maxsize=1000)
+
 # Set up data logging
 # datalogger = None
 try:
@@ -65,6 +71,15 @@ except Exception as e:
     logging.error(e)
     sys.exit(1)
 
+def threaded_logger(datalogger, queue):
+    while True:
+        if not queue.empty():
+            logger_name, item, value = queue.get()
+            datalogger.log(logger_name, item, value)
+        time.sleep(0.5)
+
+
+executor.submit(threaded_logger, pipeline, datalogger)
 
 # Set up device manager and adapter
 device_manager = SolarDeviceManager(adapter_name=config['monitor']['adapter'])
@@ -102,6 +117,15 @@ while discovering:
 device_manager.stop_discovery()
 logging.info("Found {} BLE-devices".format(len(device_manager.devices())))
 
+def threaded_poller(dev, device_manager, logger_name, config, datalogger, queue):
+    logging.info("Trying to connect to {}...".format(dev.mac_address))
+    try:
+        device = SolarDevice(mac_address=dev.mac_address, manager=device_manager, logger_name=logger_name, config=config, datalogger=datalogger, queue=queue)
+    except Exception as e:
+        logging.error(e)
+        return
+    device.connect()
+
 
 for dev in device_manager.devices():
     logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
@@ -109,13 +133,7 @@ for dev in device_manager.devices():
         if config.get(section, "mac", fallback=None) and config.get(section, "type", fallback=None):
             mac = config.get(section, "mac").lower()
             if dev.mac_address.lower() == mac:
-                logging.info("Trying to connect to {}...".format(dev.mac_address))
-                try:
-                    device = SolarDevice(mac_address=dev.mac_address, manager=device_manager, logger_name=section, config=config, datalogger=datalogger)
-                except Exception as e:
-                    logging.error(e)
-                    continue
-                device.connect()
+                executor.submit(threaded_poller, dev, device_manager, section, config, datalogger, pipeline)
 logging.info("Terminate with Ctrl+C")
 try:
     device_manager.run()

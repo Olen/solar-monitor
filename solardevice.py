@@ -40,7 +40,7 @@ class SolarDeviceManager(gatt.DeviceManager):
 
 # implementation of blegatt.Device, connects to selected GATT device
 class SolarDevice(gatt.Device):
-    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=None, config=None):
+    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=datalogger, queue=None, config=None):
         super().__init__(mac_address=mac_address, manager=manager)
         self.reader_activity = None
         self.logger_name = logger_name
@@ -57,6 +57,7 @@ class SolarDevice(gatt.Device):
         self.device_write_characteristic_polling = None
         self.device_write_characteristic_commands = None
         self.datalogger = datalogger
+        self.queue = queue
         self.run_device_poller = False
         self.poller_thread = None
         self.run_command_poller = False
@@ -230,15 +231,15 @@ class SolarDevice(gatt.Device):
                     ]
             for item in items:
                 try:
-                    self.datalogger.log(self.logger_name, item, getattr(self.entities, item))
+                    self.queue.put((self.logger_name, item, getattr(self.entities, item)))
                 except Exception as e:
                     logging.debug("[{}] Could not find {}".format(self.logger_name, item))
                     pass
 
             # We want celsius, not kelvin
             try:
-                self.datalogger.log(self.logger_name, 'temperature', self.entities.temperature_celsius)
-                self.datalogger.log(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius)
+                self.queue.put((self.logger_name, 'temperature', self.entities.temperature_celsius))
+                self.queue.put(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius))
 
             except:
                 pass
@@ -247,7 +248,7 @@ class SolarDevice(gatt.Device):
             try:
                 for cell in self.entities.cell_mvoltage:
                     if self.entities.cell_mvoltage[cell]['val'] > 0:
-                        self.datalogger.log(self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell]['val'])
+                        self.queue.put((self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell]['val']))
             except:
                 pass
 
@@ -255,7 +256,7 @@ class SolarDevice(gatt.Device):
             try:
                 for cell in self.entities.cell_voltage:
                     if self.entities.cell_voltage[cell]['val'] > 0:
-                        self.datalogger.log(self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val'])
+                        self.queue.put(self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val']))
             except:
                 pass
 
@@ -482,6 +483,9 @@ class PowerDevice():
     def alias(self):
         return self.parent.alias()
 
+    @property
+    def queue(self):
+        return self.parent.queue
 
     @property
     def datalogger(self):
@@ -704,7 +708,7 @@ class PowerDevice():
         if value != self._power_switch:
             self._power_switch = value
             try:
-                self.datalogger.log(self.logger_name, 'power_switch', self.power_switch)
+                self.queue.put((self.logger_name, 'power_switch', self.power_switch))
             except:
                 pass
 
