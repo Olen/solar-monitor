@@ -499,7 +499,7 @@ class PowerDevice():
         return (self.dsoc / 10)
     @soc.setter
     def soc(self, value):
-        self.dsoc = value * 10
+        self.validate('_dsoc', value * 10)
 
     @property
     def temperature(self):
@@ -520,28 +520,28 @@ class PowerDevice():
         return round((self.temperature - 2731) * 0.1, 1)
     @temperature_celsius.setter
     def temperature_celsius(self, value):
-        self.temperature = (value * 10) + 2731
+        self.validate('_dkelvin', (value * 10) + 2731)
 
     @property
     def temperature_fahrenheit(self):
         return round(((self.temperature * 0.18) - 459.67), 1)
     @temperature_fahrenheit.setter
     def temperature_fahrenheit(self, value):
-        self.temperature = (value + 459.67) * (5/9) * 10
+        self.validate('_dkelvin', (value + 459.67) * (5/9) * 10)
 
     @property
     def battery_temperature_celsius(self):
         return round((self.battery_temperature - 2731) * 0.1, 1)
     @battery_temperature_celsius.setter
     def battery_temperature_celsius(self, value):
-        self.battery_temperature = (value * 10) + 2731
+        self.validate('_bkelvin, (value * 10) + 2731)
 
     @property
     def battery_temperature_fahrenheit(self):
-        return round(((self.temperature * 0.18) - 459.67), 1)
+        return round(((self.battery_temperature * 0.18) - 459.67), 1)
     @battery_temperature_fahrenheit.setter
     def battery_temperature_fahrenheit(self, value):
-        self.temperature = (value + 459.67) * (5/9) * 10
+        self.validate('_bkelvin', (value + 459.67) * (5/9) * 10)
 
     @property
     def mcapacity(self):
