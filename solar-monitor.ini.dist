@@ -42,6 +42,9 @@ reconnect = False
 [datalogger]
 url = http://server/solar/api/
 token = 39129e20be0503937cb72a5f719337cc
+# How often (in minutes) should we send refreshed data. E.g. resend data that is already sent.
+# With a long refresh-time, you wil get less data use, but some graphs and external logger will
+# complain about stale data when there are few updates
 refresh = 10
 
 [mqtt]
