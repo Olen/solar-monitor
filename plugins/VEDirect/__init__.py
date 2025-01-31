@@ -13,9 +13,13 @@ class Config():
     WRITE_CHAR_UUID_POLLING  = "306b0002-b081-4037-83dc-e59fcc3cdfd0"
     WRITE_CHAR_UUID_COMMANDS = "306b0003-b081-4037-83dc-e59fcc3cdfd0"
 
-
 class Util():
     # https://community.victronenergy.com/storage/attachments/2273-vecan-registers-public.pdf
+    #
+    # After reboot, you need to pair the device
+    # Watch bluetoothctl for
+    # [agent] Enter passkey (number in 0-999999): 000000
+    #
     VREG_COMMANDS = {
         'VREC': 0x0001,
         'VACK': 0x0002,
@@ -119,6 +123,7 @@ class Util():
 
     def send_magic_packets(self):
         # Some kind of magic session init
+        #  See also https://github.com/vvvrrooomm/victron/blob/947e6bd98cd184dec7cb38ecf47954c0391dfe8f/victron_smartsolar.py
         write_characteristic = self.PowerDevice.device_write_characteristic_polling
 
         hs = "fa80ff"
@@ -130,13 +135,6 @@ class Util():
         value = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        # c.write_value(b);
-
-        # Skal ikke dit...
-        # hs = "01"
-        # value = bytearray.fromhex(hs)
-        # self.PowerDevice.characteristic_write_value(value, write_characteristic)
-        # time.sleep(0.1)
         # c.write_value(b);
 
         # Send some data to the command-characteristics
@@ -157,14 +155,45 @@ class Util():
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
 
+        # c = '306b0004-b081-4037-83dc-e59fcc3cdfd0'
+        # hs = "05008119ec0f05008119ec0e05008119010c0500"
+        # value  = bytearray.fromhex(hs)
+        # self.PowerDevice.characteristic_write_value(value, c)
+        # time.sleep(0.1)
+
+        hs = "81189005008119ec3f05008119ec12"
+        value  = bytearray.fromhex(hs)
+        self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        time.sleep(0.1)
+
+        hs = "19ecdc05038119eceb05038119eced"
+        value  = bytearray.fromhex(hs)
+        self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        time.sleep(5)
+
         # Poll for data
         write_characteristic = self.PowerDevice.device_write_characteristic_polling
-        # c = charactersistcs["306b0002-b081-4037-83dc-e59fcc3cdfd0"]
         hs = "f941"
         value  = bytearray.fromhex(hs)
         self.PowerDevice.characteristic_write_value(value, write_characteristic)
         time.sleep(0.1)
-        # c.write_value(b);
+
+        # Send some data to the command-characteristics
+        write_characteristic = self.PowerDevice.device_write_characteristic_commands
+
+        hs = "0600821893421027"
+        value = bytearray.fromhex(hs)
+        self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        time.sleep(5)
+
+        # Poll for data
+        write_characteristic = self.PowerDevice.device_write_characteristic_polling
+        hs = "f941"
+        value  = bytearray.fromhex(hs)
+        self.PowerDevice.characteristic_write_value(value, write_characteristic)
+        time.sleep(0.1)
+
+
 
     def keep_alive(self):
         # ("0024", "0600821893421027"),
