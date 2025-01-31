@@ -11,6 +11,11 @@ Currently supported
 - Victron Energy - VE.Direct devices - currently only Phoenix inverters are tested.  Work in progress to add more devices
 - Renogy BT-1 (uses the same protocol as the SolarLink/SRNE)
 
+# Update 2025-01-31
+The latest updates adds threading to the application, so it will now poll each device in its own thread, and log data in a different thread.
+
+This ensures that issues with one connected device should no longer block and stop the other devices from logging.  I am running ths version myself, and it seems to work fine, but any threading application is a potential risk, especially when it comes to resource usage, so please watch carefully after upgrading.
+
 # Requirements
 Look at requirements.txt
 
