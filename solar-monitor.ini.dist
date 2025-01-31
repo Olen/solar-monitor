@@ -1,8 +1,8 @@
 [monitor]
 adapter = hci0
 debug = False
-temperature = C
 reconnect = False
+temperature = C
 # C = Celsius
 # K = Kelvin
 # F = Farenheit
@@ -42,6 +42,7 @@ reconnect = False
 [datalogger]
 url = http://server/solar/api/
 token = 39129e20be0503937cb72a5f719337cc
+refresh = 10
 
 [mqtt]
 # Address to the mqtt broker

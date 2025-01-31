@@ -192,6 +192,7 @@ class DataLogger():
         logging.debug("Creating new DataLogger")
         self.url = None
         self.mqtt = None
+        self.refresh_inteval = config.get('datalogger', 'refresh', fallback=10)
         if config.get('datalogger', 'url', fallback=None):
             self.url = config.get('datalogger', 'url')
             self.token = config.get('datalogger', 'token')
@@ -204,17 +205,8 @@ class DataLogger():
                 password=config.get('mqtt', 'password', fallback=None),
                 hostname=config.get('mqtt', 'hostname', fallback=None)
             )
-        self.logdata = {}
 
-       
-    # logdata  
-    # - device_id
-    #       var1:   
-    #           ts: timestamp
-    #           value: value     
-    #
-    #
-    # }
+        self.logdata = {}
 
     def log(self, device, var, val):
         # Only log modified data
@@ -235,7 +227,7 @@ class DataLogger():
             self.logdata[device][var]['value'] = val
             logging.info("[{}] Sending new data {}: {}".format(device, var, val))
             self.send_to_server(device, var, val)
-        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=10):
+        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=self.refresh_interval):
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = val
             # logging.debug("Sending data to server due to long wait")
