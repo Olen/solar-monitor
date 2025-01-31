@@ -59,10 +59,10 @@ class DataLoggerMqtt():
             else:
                 if not refresh:
                     self.delete_sensor(device, var)
-                time.sleep(1)
+                time.sleep(0.5)
                 self.create_sensor(device, var)
             self.sensors.append(topic)
-            time.sleep(0.2)
+            time.sleep(0.1)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         ret = self.client.publish(topic, val, retain=True)
         if "power_switch" in var and time.time() > self._listener_created[device, var] + 300:
@@ -227,7 +227,7 @@ class DataLogger():
             self.logdata[device] = {}
         if var not in self.logdata[device]:
             self.logdata[device][var] = {}
-            self.logdata[device][var]['ts'] = None
+            self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = None
 
         if self.logdata[device][var]['value'] != val:
@@ -235,7 +235,7 @@ class DataLogger():
             self.logdata[device][var]['value'] = val
             logging.info("[{}] Sending new data {}: {}".format(device, var, val))
             self.send_to_server(device, var, val)
-        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=1):
+        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=10):
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = val
             # logging.debug("Sending data to server due to long wait")

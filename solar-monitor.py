@@ -60,7 +60,7 @@ else:
 duallog.setup('solar-monitor', minLevel=level, fileLevel=level, rotation='daily', keep=30)
 
 # Create the message queue
-pipeline = queue.Queue(maxsize=1000)
+pipeline = queue.Queue(maxsize=10000)
 
 # Set up data logging
 # datalogger = None
@@ -71,13 +71,22 @@ except Exception as e:
     logging.error(e)
     sys.exit(1)
 
-def threaded_logger(datalogger, queue):
-    while True:
-        if not queue.empty():
-            logger_name, item, value = queue.get()
-            datalogger.log(logger_name, item, value)
-        time.sleep(0.5)
+def threaded_logger(queue, datalogger):
+    x = time.time()
+    try:
+        while True:
+            if not queue.empty():
+                y = time.time()
+                if y > x + 1:
+                    logging.debug(f"Queue size = {queue.qsize()}")
+                    x = y
+                logger_name, item, value = queue.get()
+                datalogger.log(logger_name, item, value)
+    except Exception as e:
+        logging.error(e)
+        sys.exit(299)
 
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=100)
 
 executor.submit(threaded_logger, pipeline, datalogger)
 
@@ -134,6 +143,11 @@ for dev in device_manager.devices():
             mac = config.get(section, "mac").lower()
             if dev.mac_address.lower() == mac:
                 executor.submit(threaded_poller, dev, device_manager, section, config, datalogger, pipeline)
+                logging.info("Waiting for device to connect")
+                time.sleep(1)
+
+logging.debug("Waiting for devices to connect...")
+time.sleep(10)
 logging.info("Terminate with Ctrl+C")
 try:
     device_manager.run()

@@ -40,7 +40,7 @@ class SolarDeviceManager(gatt.DeviceManager):
 
 # implementation of blegatt.Device, connects to selected GATT device
 class SolarDevice(gatt.Device):
-    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=datalogger, queue=None, config=None):
+    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=None, queue=None, config=None):
         super().__init__(mac_address=mac_address, manager=manager)
         self.reader_activity = None
         self.logger_name = logger_name
@@ -65,7 +65,7 @@ class SolarDevice(gatt.Device):
         self.run_connect = False
         self.connect_thread = None
         self.command_trigger = None
-        self.sleeper = threading.Event()
+        # self.sleeper = threading.Event()
         self.config = config
         if config:
             self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
@@ -117,7 +117,8 @@ class SolarDevice(gatt.Device):
             super().connect()
         except DBusException as e:
             logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
-            sys.exit(100)
+            time.sleep(10)
+            # sys.exit(100)
 
     def connect_succeeded(self):
         super().connect_succeeded()
@@ -133,10 +134,11 @@ class SolarDevice(gatt.Device):
             logging.info("[{}] Stopping command-thread".format(self.logger_name))
             self.run_command_poller = False
             self.command_trigger.set()
+            self.command_trigger.clear()
         if self.auto_reconnect:
             logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
-            self.sleeper.wait(10)
-            # time.sleep(10)
+            # self.sleeper.wait(10)
+            time.sleep(10)
             self.connect()
 
 
@@ -150,10 +152,11 @@ class SolarDevice(gatt.Device):
             logging.info("[{}] Stopping command-thread".format(self.logger_name))
             self.run_command_poller = False
             self.command_trigger.set()
+            self.command_trigger.clear()
         if self.auto_reconnect:
             logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            self.sleeper.wait(10)
-            # time.sleep(10)
+            # self.sleeper.wait(10)
+            time.sleep(10)
             self.connect()
 
     def services_resolved(self):
@@ -231,6 +234,7 @@ class SolarDevice(gatt.Device):
                     ]
             for item in items:
                 try:
+                    logging.debug(f"Logging data: {self.logger_name}, {item}, {getattr(self.entities, item)}")
                     self.queue.put((self.logger_name, item, getattr(self.entities, item)))
                 except Exception as e:
                     logging.debug("[{}] Could not find {}".format(self.logger_name, item))
@@ -239,7 +243,7 @@ class SolarDevice(gatt.Device):
             # We want celsius, not kelvin
             try:
                 self.queue.put((self.logger_name, 'temperature', self.entities.temperature_celsius))
-                self.queue.put(self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius))
+                self.queue.put((self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius))
 
             except:
                 pass
@@ -256,7 +260,7 @@ class SolarDevice(gatt.Device):
             try:
                 for cell in self.entities.cell_voltage:
                     if self.entities.cell_voltage[cell]['val'] > 0:
-                        self.queue.put(self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val']))
+                        self.queue.put((self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val']))
             except:
                 pass
 
@@ -321,6 +325,7 @@ class SolarDevice(gatt.Device):
                 self.datalogger.mqtt.sets[self.logger_name] = []
             except Exception as e:
                 logging.error("[{}] {} Something bad happened: {}".format(self.logger_name, threading.current_thread().name, e))
+                mqtt_sets = []
                 pass
             for msg in mqtt_sets:
                 var = msg[0]
