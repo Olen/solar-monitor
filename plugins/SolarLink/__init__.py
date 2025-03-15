@@ -135,6 +135,9 @@ class Util():
         self.PowerDevice.entities.charge_voltage = self.Bytes2Int(bs, 5, 2) * 0.1
         logging.debug("mElectricity {} {} => {} A".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2) * 0.01))
         self.PowerDevice.entities.charge_current = self.Bytes2Int(bs, 7, 2) * 0.01
+        logging.debug("mPower: {} * {} => {} W".format(self.PowerDevice.entities.charge_voltage * self.PowerDevice.entities.charge_current))
+        self.PowerDevice.entities.charge_power = self.PowerDevice.entities.charge_voltage * self.PowerDevice.entities.charge_current
+
         logging.debug("mDeviceTemperature {}".format(int(bs[9])))
         temp_celsius = self.Bytes2Int(bs, 9, 1)
         if temp_celsius > 128:
