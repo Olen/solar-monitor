@@ -2,3 +2,6 @@
 solar-monitor.ini
 solar-monitor.log*
 __pycache__/
+.venv/
+.pytest_cache/
+.superpowers/

@@ -29,19 +29,21 @@ mac = 11:11:11:11:11:11
 reconnect = False
 
 [inverter_1]
-type = VictronConnect
+type = VEDirect
 mac = 11:11:11:11:11:11
 reconnect = False
 
 [rectifier_1]
-type = VictronConnect
+type = VEDirect
 mac = 11:11:11:11:11:11
 reconnect = False
 
 
 [datalogger]
-url = http://server/solar/api/
-token = 39129e20be0503937cb72a5f719337cc
+# Uncomment and point this at your own HTTP ingest endpoint to enable the
+# JSON/HTTP datalogger. Leave commented out to use MQTT only.
+# url = https://server.example.com/solar/api/
+# token = your-token-here
 
 [mqtt]
 # Address to the mqtt broker
