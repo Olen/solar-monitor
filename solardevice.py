@@ -9,6 +9,7 @@ import time
 import os
 import sys
 import gatt
+from gi.repository import GLib
 import time
 from datetime import datetime
 from dbus.exceptions import DBusException
@@ -120,8 +121,21 @@ class SolarDevice(gatt.Device):
             super().connect()
         except DBusException as e:
             logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
-            time.sleep(10)
+            self._schedule_reconnect()
             # sys.exit(100)
+
+    def _schedule_reconnect(self):
+        """Schedule a reconnect on the main loop. Never sleeps, never recurses —
+        connect_failed -> connect() -> connect_failed() is a recursive cycle that
+        blows the stack after ~an hour of a device being unreachable."""
+        if not self.auto_reconnect:
+            return
+        logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
+        GLib.timeout_add_seconds(10, self._reconnect_cb)
+
+    def _reconnect_cb(self):
+        self.connect()
+        return False  # one-shot: do not repeat
 
     def connect_succeeded(self):
         super().connect_succeeded()
@@ -138,11 +152,7 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
             self.command_trigger.clear()
-        if self.auto_reconnect:
-            logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
-            # self.sleeper.wait(10)
-            time.sleep(10)
-            self.connect()
+        self._schedule_reconnect()
 
 
     def disconnect_succeeded(self):
@@ -156,11 +166,7 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
             self.command_trigger.clear()
-        if self.auto_reconnect:
-            logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            # self.sleeper.wait(10)
-            time.sleep(10)
-            self.connect()
+        self._schedule_reconnect()
 
     def services_resolved(self):
         super().services_resolved()

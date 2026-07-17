@@ -102,3 +102,23 @@ def _install_paho_stub():
 _install_dbus_stub()
 _install_gatt_stub()
 _install_paho_stub()
+
+
+import pytest
+
+
+class _FakeGLib:
+    def __init__(self):
+        self.scheduled = []  # list of (delay, callback)
+
+    def timeout_add_seconds(self, delay, callback):
+        self.scheduled.append((delay, callback))
+        return 1  # a fake source id
+
+
+@pytest.fixture
+def fake_glib(monkeypatch):
+    import solardevice
+    fake = _FakeGLib()
+    monkeypatch.setattr(solardevice, "GLib", fake, raising=False)
+    return fake
