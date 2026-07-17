@@ -55,3 +55,27 @@ def test_supervise_returns_0_on_clean_stop():
     stop.set()  # already asked to stop
     rc = supervisor.supervise(dm, fut, lt, stop, check_interval=0.01, stale_timeout=30)
     assert rc == 0
+
+
+def test_supervise_does_not_exit_when_only_some_devices_stale():
+    # Two expected devices; "batt" keeps reporting while "reg" goes stale.
+    # supervise must NOT exit (all-stale, not any-stale). A regression to
+    # `if stale:` would return 1 here and fail this test.
+    clock = {"t": 0.0}
+    lt = supervisor.LivenessTracker(get_time=lambda: clock["t"])
+    lt.expect("reg")
+    lt.expect("batt")
+    dm = _FakeDM()
+    fut = _FakeFuture(done=False)
+    stop = threading.Event()
+
+    def tick():
+        clock["t"] += 100        # "reg" (last=0) is now stale...
+        lt.record("batt")        # ...but "batt" just reported, so it is fresh
+        stop.set()               # end the loop cleanly after this one check
+
+    rc = supervisor.supervise(
+        dm, fut, lt, stop, check_interval=0.01, stale_timeout=30, on_tick=tick,
+    )
+    assert rc == 0
+    assert dm.stopped is False
