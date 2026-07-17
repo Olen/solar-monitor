@@ -18,7 +18,12 @@ class DataLoggerMqtt():
         if not hostname:
             hostname = socket.gethostname()
 
-        self.client = paho.Client(paho.CallbackAPIVersion.VERSION1, "{}".format(hostname))        #  create client object
+        cb_api_version = getattr(paho, "CallbackAPIVersion", None)
+        if cb_api_version is not None:                                     #  create client object on paho-mqtt>=2.x
+            self.client = paho.Client(paho.CallbackAPIVersion.VERSION1, "{}".format(hostname))
+        else:                                                              #  create client object on older paho-mqtt
+            self.client = paho.Client("{}".format(hostname))
+
         if username and password:
             self.client.username_pw_set(username=username,password=password)
 
