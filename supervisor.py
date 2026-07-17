@@ -64,3 +64,28 @@ class LivenessTracker:
 
     def any_expected(self):
         return bool(self._last)
+
+
+def supervise(device_manager, logger_future, liveness, stop_event,
+              check_interval=30.0, stale_timeout=600.0, get_time=time.time,
+              on_tick=None):
+    """Watch the daemon's health until stop_event, then return an exit code.
+
+    Returns 1 (so systemd restarts) if the consumer thread died or every
+    expected device has gone stale; 0 on a clean requested stop.
+    """
+    while not stop_event.wait(check_interval):
+        if on_tick is not None:
+            on_tick()
+        if logger_future is not None and logger_future.done():
+            logging.error("Consumer thread has died; exiting for restart.")
+            device_manager.stop()
+            return 1
+        if liveness.any_expected():
+            stale = liveness.stale(stale_timeout)
+            if len(stale) == len(liveness._last):  # every expected device is stale
+                logging.error("No data from any device in %ss (%s); exiting for restart.",
+                              stale_timeout, ", ".join(sorted(stale)))
+                device_manager.stop()
+                return 1
+    return 0
