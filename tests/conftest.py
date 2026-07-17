@@ -79,5 +79,26 @@ def _install_gatt_stub():
     sys.modules["gatt.errors"] = errors
 
 
+def _install_paho_stub():
+    """`paho-mqtt` is not installed in the test venv. datalogger.py only needs
+    `import paho.mqtt.client as paho` to succeed at module level — no test
+    exercises DataLogger.__init__ (which would call paho.Client(...)), so the
+    stub just needs to make that import resolve."""
+    if "paho" in sys.modules:
+        return
+
+    paho = types.ModuleType("paho")
+    mqtt = types.ModuleType("paho.mqtt")
+    client = types.ModuleType("paho.mqtt.client")
+
+    mqtt.client = client
+    paho.mqtt = mqtt
+
+    sys.modules["paho"] = paho
+    sys.modules["paho.mqtt"] = mqtt
+    sys.modules["paho.mqtt.client"] = client
+
+
 _install_dbus_stub()
 _install_gatt_stub()
+_install_paho_stub()
