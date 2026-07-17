@@ -40,3 +40,27 @@ def run_logger(queue_obj, datalogger, stop_event, on_item=None, get_time=time.ti
         if now > last_report + 1 and not queue_obj.empty():
             logging.debug("Queue size = %s", queue_obj.qsize())
             last_report = now
+
+
+class LivenessTracker:
+    """Tracks the last time each expected device produced a reading."""
+
+    def __init__(self, get_time=time.time):
+        self._get_time = get_time
+        self._last = {}
+
+    def expect(self, name):
+        """Register a device we require data from; seeds a baseline timestamp."""
+        self._last.setdefault(name, self._get_time())
+
+    def record(self, name):
+        """Note that `name` just produced a reading."""
+        self._last[name] = self._get_time()
+
+    def stale(self, timeout_s):
+        """Return the names with no reading within the last `timeout_s` seconds."""
+        now = self._get_time()
+        return [n for n, t in self._last.items() if now - t > timeout_s]
+
+    def any_expected(self):
+        return bool(self._last)

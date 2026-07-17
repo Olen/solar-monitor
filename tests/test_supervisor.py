@@ -64,3 +64,31 @@ def test_run_logger_stops_when_event_set():
     stop.set()
     # Should return promptly because stop is already set.
     supervisor.run_logger(q, _FlakyLogger(), stop)
+
+
+def test_liveness_reports_stale_after_timeout():
+    clock = {"t": 1000.0}
+    lt = supervisor.LivenessTracker(get_time=lambda: clock["t"])
+    lt.expect("reg")
+    lt.record("reg")            # fresh at t=1000
+    clock["t"] = 1000.0 + 40
+    assert lt.stale(30) == ["reg"]      # 40s > 30s timeout
+
+
+def test_liveness_not_stale_when_recent():
+    clock = {"t": 500.0}
+    lt = supervisor.LivenessTracker(get_time=lambda: clock["t"])
+    lt.expect("reg")
+    clock["t"] = 500.0 + 10
+    lt.record("reg")            # recorded at t=510
+    clock["t"] = 500.0 + 20
+    assert lt.stale(30) == []           # only 10s since last record
+
+
+def test_expect_seeds_a_baseline_so_a_never_reporting_device_goes_stale():
+    clock = {"t": 0.0}
+    lt = supervisor.LivenessTracker(get_time=lambda: clock["t"])
+    lt.expect("reg")            # baseline at t=0, never records
+    clock["t"] = 100.0
+    assert lt.stale(30) == ["reg"]
+    assert lt.any_expected() is True
