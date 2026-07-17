@@ -29,12 +29,12 @@ mac = 11:11:11:11:11:11
 reconnect = False
 
 [inverter_1]
-type = VictronConnect
+type = VEDirect
 mac = 11:11:11:11:11:11
 reconnect = False
 
 [rectifier_1]
-type = VictronConnect
+type = VEDirect
 mac = 11:11:11:11:11:11
 reconnect = False
 
