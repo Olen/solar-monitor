@@ -13,6 +13,8 @@ import duallog
 import concurrent.futures
 import queue
 import threading
+import signal
+from supervisor import run_logger, LivenessTracker, supervise
 
 
 
@@ -62,6 +64,9 @@ duallog.setup('solar-monitor', minLevel=level, fileLevel=level, rotation='daily'
 # Create the message queue
 pipeline = queue.Queue(maxsize=10000)
 
+stop_event = threading.Event()
+liveness = LivenessTracker()
+
 # Set up data logging
 # datalogger = None
 try:
@@ -71,28 +76,11 @@ except Exception as e:
     logging.error(e)
     sys.exit(1)
 
-def threaded_logger(queue_obj, datalogger):
-    x = time.time()
-    try:
-        while True:
-            try:
-                logger_name, item, value = queue_obj.get(timeout=1.0)
-                datalogger.log(logger_name, item, value)
-            except queue.Empty:
-                pass
-
-            y = time.time()
-            if y > x + 1:
-                if not queue_obj.empty():
-                    logging.debug(f"Queue size = {queue_obj.qsize()}")
-                x = y
-    except Exception as e:
-        logging.error(e)
-        sys.exit(299)
-
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=100)
 
-executor.submit(threaded_logger, pipeline, datalogger)
+logger_future = executor.submit(
+    run_logger, pipeline, datalogger, stop_event, liveness.record
+)
 
 # Set up device manager and adapter
 device_manager = SolarDeviceManager(adapter_name=config['monitor']['adapter'])
@@ -140,6 +128,7 @@ def threaded_poller(dev, device_manager, logger_name, config, datalogger, queue)
     device.connect()
 
 
+matched = 0
 for dev in device_manager.devices():
     logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
     for section in config.sections():
@@ -147,22 +136,47 @@ for dev in device_manager.devices():
             mac = config.get(section, "mac").lower()
             if dev.mac_address.lower() == mac:
                 executor.submit(threaded_poller, dev, device_manager, section, config, datalogger, pipeline)
+                liveness.expect(section)
+                matched += 1
                 logging.info("Waiting for device to connect")
                 time.sleep(1)
+                break
+
+if matched == 0:
+    logging.error("No configured devices were discovered; exiting for restart.")
+    stop_event.set()
+    sys.exit(1)
+
+
+def _handle_signal(signum, _frame):
+    logging.info("Received signal %s; shutting down.", signum)
+    stop_event.set()
+    device_manager.stop()
+
+
+signal.signal(signal.SIGTERM, _handle_signal)
+signal.signal(signal.SIGINT, _handle_signal)
 
 logging.debug("Waiting for devices to connect...")
 time.sleep(10)
-logging.info("Terminate with Ctrl+C")
-try:
-    device_manager.run()
-except KeyboardInterrupt:
-    pass
 
+# Run the gatt main loop on a background thread so the main thread can supervise.
+loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
+loop_thread.start()
+
+logging.info("Supervising; terminate with Ctrl+C or SIGTERM")
+exit_code = supervise(device_manager, logger_future, liveness, stop_event,
+                      check_interval=30.0, stale_timeout=600.0)
+
+stop_event.set()
+device_manager.stop()
 for dev in device_manager.devices():
     try:
         dev.disconnect()
-    except:
-        pass
+    except Exception as e:
+        logging.warning("Error disconnecting %s: %s", getattr(dev, "mac_address", "?"), e)
+
+sys.exit(exit_code)
 
 
 
