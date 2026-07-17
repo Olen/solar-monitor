@@ -259,9 +259,9 @@ class DataLogger():
             payload = {'device': device, var: val, 'ts': ts}
             header = {'Content-type': 'application/json', 'Accept': 'text/plain', 'Authorization': 'Bearer {}'.format(self.token)}
             try:
-                response = requests.post(url=self.url, json=payload, headers=header)
-            except TimeoutError:
-                logging.error("Connection to {} timed out!".format(self.url))
+                response = requests.post(url=self.url, json=payload, headers=header, timeout=(5, 10))
+            except requests.exceptions.RequestException as e:
+                logging.error("Failed to POST to {}: {}".format(self.url, e))
 
 
 
