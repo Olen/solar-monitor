@@ -71,17 +71,21 @@ except Exception as e:
     logging.error(e)
     sys.exit(1)
 
-def threaded_logger(queue, datalogger):
+def threaded_logger(queue_obj, datalogger):
     x = time.time()
     try:
         while True:
-            if not queue.empty():
-                y = time.time()
-                if y > x + 1:
-                    logging.debug(f"Queue size = {queue.qsize()}")
-                    x = y
-                logger_name, item, value = queue.get()
+            try:
+                logger_name, item, value = queue_obj.get(timeout=1.0)
                 datalogger.log(logger_name, item, value)
+            except queue.Empty:
+                pass
+
+            y = time.time()
+            if y > x + 1:
+                if not queue_obj.empty():
+                    logging.debug(f"Queue size = {queue_obj.qsize()}")
+                x = y
     except Exception as e:
         logging.error(e)
         sys.exit(299)
