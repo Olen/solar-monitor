@@ -35,3 +35,17 @@ def test_no_blocking_queue_put_calls_remain():
     assert not re.search(r"self\.queue\.put\(", src), (
         "found a blocking self.queue.put( in solardevice.py"
     )
+
+
+def test_power_device_power_switch_setter_enqueues_via_parent():
+    # PowerDevice is NOT a SolarDevice subclass; it holds a `parent` reference
+    # to the owning SolarDevice and has no _enqueue of its own. The setter
+    # must therefore call self.parent._enqueue(...), not self._enqueue(...).
+    dev = _make_device()
+    power_device = solardevice.PowerDevice(parent=dev)
+
+    power_device.power_switch = 1
+
+    assert dev.queue.qsize() == 1
+    assert dev.queue.get_nowait() == (dev.logger_name, "power_switch", 1)
+    assert dev._dropped == 0

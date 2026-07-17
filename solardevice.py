@@ -728,7 +728,7 @@ class PowerDevice():
         if value != self._power_switch:
             self._power_switch = value
             try:
-                self._enqueue((self.name, 'power_switch', self.power_switch))
+                self.parent._enqueue((self.name, 'power_switch', self.power_switch))
             except:
                 pass
 
