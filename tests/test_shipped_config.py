@@ -21,3 +21,18 @@ def test_every_device_type_maps_to_a_real_plugin():
         assert os.path.isdir(os.path.join(plugins_dir, dtype)), (
             f"[{section}] type = {dtype} has no plugins/{dtype} directory"
         )
+
+
+def test_no_active_datalogger_url_by_default():
+    cp = _read_dist()
+    # A fresh install must not POST to a placeholder host on first run.
+    url = cp.get("datalogger", "url", fallback=None) if cp.has_section("datalogger") else None
+    assert not url, f"datalogger url should be commented out by default, got {url!r}"
+
+
+def test_no_credential_looking_token():
+    cp = _read_dist()
+    token = cp.get("datalogger", "token", fallback="") if cp.has_section("datalogger") else ""
+    assert token in ("", "your-token-here"), (
+        f"shipped token should be a placeholder, got {token!r}"
+    )
