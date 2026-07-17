@@ -99,9 +99,34 @@ def _install_paho_stub():
     sys.modules["paho.mqtt.client"] = client
 
 
+def _install_gi_stub():
+    """`gi` (PyGObject) is a system package, not pip-installable into a venv.
+    solardevice.py only needs `from gi.repository import GLib` to succeed at
+    module level — the `fake_glib` fixture below monkeypatches
+    `solardevice.GLib` for the reconnect tests, so this stub just needs a
+    harmless `timeout_add_seconds`."""
+    if "gi" in sys.modules:
+        return
+
+    gi = types.ModuleType("gi")
+    repository = types.ModuleType("gi.repository")
+
+    class GLib:
+        @staticmethod
+        def timeout_add_seconds(delay, callback):
+            return 1  # a fake source id
+
+    repository.GLib = GLib
+    gi.repository = repository
+
+    sys.modules["gi"] = gi
+    sys.modules["gi.repository"] = repository
+
+
 _install_dbus_stub()
 _install_gatt_stub()
 _install_paho_stub()
+_install_gi_stub()
 
 
 import pytest
