@@ -57,3 +57,11 @@ def load_config(ini_file, adapter=None, debug=False):
     if debug:
         config.set('monitor', 'debug', '1')
     return config
+
+
+def discovery_complete(found, window=DISCOVERY_WINDOW):
+    """True when the device count `window` seconds ago equals the current count,
+    i.e. no new devices appeared in the last `window` one-second samples."""
+    if len(found) <= window:
+        return False
+    return found[-1] == found[-1 - window]
