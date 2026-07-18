@@ -92,3 +92,12 @@ def test_expect_seeds_a_baseline_so_a_never_reporting_device_goes_stale():
     clock["t"] = 100.0
     assert lt.stale(30) == ["reg"]
     assert lt.any_expected() is True
+
+
+def test_expected_count_reflects_registered_devices():
+    lt = supervisor.LivenessTracker()
+    assert lt.expected_count() == 0
+    lt.expect("reg")
+    lt.expect("batt")
+    lt.expect("reg")            # idempotent — same device, not double-counted
+    assert lt.expected_count() == 2

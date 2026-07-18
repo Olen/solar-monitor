@@ -65,6 +65,10 @@ class LivenessTracker:
     def any_expected(self):
         return bool(self._last)
 
+    def expected_count(self):
+        """Number of devices registered via expect()."""
+        return len(self._last)
+
 
 def supervise(device_manager, logger_future, liveness, stop_event,
               check_interval=30.0, stale_timeout=600.0, get_time=time.time,
@@ -87,7 +91,7 @@ def supervise(device_manager, logger_future, liveness, stop_event,
             return 1
         if liveness.any_expected():
             stale = liveness.stale(stale_timeout)
-            if len(stale) == len(liveness._last):  # every expected device is stale
+            if len(stale) == liveness.expected_count():  # every expected device is stale
                 logging.error("No data from any device in %ss (%s); exiting for restart.",
                               stale_timeout, ", ".join(sorted(stale)))
                 device_manager.stop()
