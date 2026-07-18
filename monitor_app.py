@@ -11,7 +11,6 @@ import concurrent.futures
 import logging
 import queue
 import signal
-import sys
 import threading
 import time
 
