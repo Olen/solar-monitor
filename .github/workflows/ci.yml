@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        # gatt/dbus/paho/gi are stubbed in tests/conftest.py; requests is a real
+        # runtime dep imported by datalogger and exercised by a test.
+        run: pip install pytest requests
+      - name: Byte-compile (syntax gate)
+        run: python -m py_compile monitor_app.py solar-monitor.py supervisor.py solardevice.py datalogger.py duallog.py
+      - name: Run tests
+        run: python -m pytest -q
