@@ -43,6 +43,15 @@ def test_disconnect_of_a_live_connection_requeues_via_on_disconnect():
     assert dev._resolved is False
 
 
+def test_disconnect_sets_the_drain_event():
+    # A failed connect_fn drains by waiting on _disconnect_event; disconnect_
+    # succeeded must set it so teardown can't bleed into the next attempt.
+    dev = _bare_device()
+    assert not dev._disconnect_event.is_set()
+    dev.disconnect_succeeded()
+    assert dev._disconnect_event.is_set()
+
+
 def test_disconnect_during_a_failed_attempt_does_not_requeue():
     dev = _bare_device()
     dev._resolved = False                    # was never resolved (attempt failed)

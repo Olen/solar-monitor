@@ -23,6 +23,8 @@ from connection import ConnectionCoordinator, run_connection_loop
 DISCOVERY_WINDOW = 5     # stop discovery after this many seconds with no new devices
 DISCOVERY_MAX_WAIT = 15  # hard cap on discovery duration (seconds)
 CONNECT_TIMEOUT = 40.0   # per-attempt wait for a device to resolve services
+DISCOVER_REFRESH = 3.0   # brief re-scan before a connect so BlueZ still knows the device
+DRAIN_TIMEOUT = 4.0      # wait for a failed device to fully tear down before the next attempt
 
 
 class ConfigError(Exception):
@@ -167,10 +169,35 @@ def main(argv=None):
     loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
     loop_thread.start()
 
+    def _refresh_discovery():
+        """Briefly re-scan so BlueZ still knows the device. It forgets devices it
+        has not seen recently, which makes a later connect fail with 'Device does
+        not exist'. Serialized connects are spaced out, so without this the
+        startup discovery cache expires between attempts. The scan is stopped
+        before connecting (scanning + connecting collide)."""
+        try:
+            device_manager.start_discovery()
+            time.sleep(DISCOVER_REFRESH)
+            device_manager.stop_discovery()
+            time.sleep(1)   # let discovery fully stop before we connect
+        except Exception as e:
+            logging.debug("Discovery refresh failed: %s", e)
+
+    def _drain(device):
+        """Fully disconnect a failed device and wait for teardown, so a late
+        callback from this attempt cannot bleed into the next one."""
+        device._disconnect_event.clear()
+        try:
+            device.disconnect()
+        except Exception:
+            pass
+        device._disconnect_event.wait(DRAIN_TIMEOUT)
+
     def connect_fn(key):
         """Connect one device and block until it resolves services, fails, or
         times out. Serialized by the connection loop — only one at a time."""
         device = devices[key]
+        _refresh_discovery()
         device._connect_ok = False
         device._connect_event.clear()
         logging.info("[%s] Connecting to %s", key, device.mac_address)
@@ -178,15 +205,14 @@ def main(argv=None):
             device.connect()
         except Exception as e:
             logging.error("[%s] connect() raised: %s", key, e)
+            _drain(device)
             return False
-        if not device._connect_event.wait(CONNECT_TIMEOUT):
-            logging.warning("[%s] connect timed out after %ss", key, CONNECT_TIMEOUT)
-            try:
-                device.disconnect()
-            except Exception:
-                pass
-            return False
-        return device._connect_ok
+        ok = device._connect_event.wait(CONNECT_TIMEOUT) and device._connect_ok
+        if not ok:
+            if not device._connect_event.is_set():
+                logging.warning("[%s] connect timed out after %ss", key, CONNECT_TIMEOUT)
+            _drain(device)
+        return ok
 
     conn_thread = threading.Thread(
         target=run_connection_loop, args=(coordinator, connect_fn, stop_event),
@@ -199,6 +225,7 @@ def main(argv=None):
 
     stop_event.set()
     device_manager.stop()
+    conn_thread.join(timeout=2)   # let the connection loop finish its current step
     for device in devices.values():
         try:
             device.disconnect()

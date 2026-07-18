@@ -13,6 +13,7 @@ without Bluetooth. The actual connect is performed by a caller-supplied
 until the device resolves services or the attempt fails/times out.
 """
 import logging
+import threading
 import time
 
 
@@ -22,27 +23,37 @@ class ConnectionCoordinator:
     Only ever hands out one device at a time via next_due(); the caller connects
     it (blocking) and reports the outcome to record_result(). Failures back off
     exponentially so a flapping device does not get hammered.
+
+    Thread-safe: the connection loop calls next_due()/record_result() on one
+    thread while mark_disconnected() is called from the gatt callback thread, so
+    every _state access is guarded by a lock.
     """
+
+    _MAX_ATTEMPTS_FOR_BACKOFF = 30  # clamp the exponent so backoff can't grow to a bigint
 
     def __init__(self, base_backoff=5.0, max_backoff=300.0, get_time=time.time):
         self._get_time = get_time
         self.base_backoff = base_backoff
         self.max_backoff = max_backoff
+        self._lock = threading.Lock()
         self._state = {}  # key -> {"connected": bool, "attempts": int, "next_attempt": float}
 
     def add(self, key):
         """Register a device to be kept connected."""
-        self._state.setdefault(key, {"connected": False, "attempts": 0, "next_attempt": 0.0})
+        with self._lock:
+            self._state.setdefault(key, {"connected": False, "attempts": 0, "next_attempt": 0.0})
 
     def _backoff(self, attempts):
+        attempts = min(attempts, self._MAX_ATTEMPTS_FOR_BACKOFF)
         return min(self.base_backoff * (2 ** (attempts - 1)), self.max_backoff)
 
     def next_due(self):
         """The key of the next disconnected device whose backoff has elapsed, or
         None. Earliest-due first, then by key for determinism."""
         now = self._get_time()
-        due = [(s["next_attempt"], k) for k, s in self._state.items()
-               if not s["connected"] and s["next_attempt"] <= now]
+        with self._lock:
+            due = [(s["next_attempt"], k) for k, s in self._state.items()
+                   if not s["connected"] and s["next_attempt"] <= now]
         if not due:
             return None
         due.sort()
@@ -50,30 +61,34 @@ class ConnectionCoordinator:
 
     def record_result(self, key, success):
         """Report the outcome of a connection attempt for `key`."""
-        s = self._state[key]
-        if success:
-            s["connected"] = True
-            s["attempts"] = 0
-            s["next_attempt"] = 0.0
-        else:
-            s["attempts"] += 1
-            s["next_attempt"] = self._get_time() + self._backoff(s["attempts"])
+        with self._lock:
+            s = self._state[key]
+            if success:
+                s["connected"] = True
+                s["attempts"] = 0
+                s["next_attempt"] = 0.0
+            else:
+                s["attempts"] += 1
+                s["next_attempt"] = self._get_time() + self._backoff(s["attempts"])
 
     def mark_disconnected(self, key):
         """A previously-connected device dropped; queue it for reconnect after a
         short settle delay (not immediately, to avoid hammering a flapper)."""
-        s = self._state.get(key)
-        if s is None:
-            return
-        s["connected"] = False
-        s["attempts"] = 0
-        s["next_attempt"] = self._get_time() + self.base_backoff
+        with self._lock:
+            s = self._state.get(key)
+            if s is None:
+                return
+            s["connected"] = False
+            s["attempts"] = 0
+            s["next_attempt"] = self._get_time() + self.base_backoff
 
     def connected_count(self):
-        return sum(1 for s in self._state.values() if s["connected"])
+        with self._lock:
+            return sum(1 for s in self._state.values() if s["connected"])
 
     def all_connected(self):
-        return all(s["connected"] for s in self._state.values()) if self._state else True
+        with self._lock:
+            return all(s["connected"] for s in self._state.values()) if self._state else True
 
 
 def run_connection_loop(coordinator, connect_fn, stop_event, get_time=time.time,

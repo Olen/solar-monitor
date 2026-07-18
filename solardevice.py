@@ -29,7 +29,9 @@ class SolarDeviceManager(gatt.DeviceManager):
 
     def device_discovered(self, device):
         logging.info("[{}] Discovered, alias = {}".format(device.mac_address, device.alias()))
-        self.stop_discovery()   # in case to stop after discovered one device
+        # NB: do NOT stop_discovery() here. It used to stop after the first device,
+        # which crippled scanning — the connection loop needs full discovery windows
+        # to keep BlueZ's device cache fresh. The loop starts/stops discovery itself.
 
     def make_device(self, mac_address):
         # if mac_address not in self._devices:
@@ -66,6 +68,10 @@ class SolarDevice(gatt.Device):
         self._connect_event = threading.Event()
         self._connect_ok = False
         self._resolved = False
+        # Set by disconnect_succeeded so a failed attempt can wait for the device
+        # to fully tear down before the next attempt (no late callbacks bleeding
+        # across attempts).
+        self._disconnect_event = threading.Event()
         self.on_disconnect = None
         self.run_device_poller = False
         self.poller_thread = None
@@ -169,6 +175,7 @@ class SolarDevice(gatt.Device):
         was_resolved = self._resolved
         self._resolved = False
         self._signal_connect_result(False)
+        self._disconnect_event.set()   # let a draining connect_fn know teardown is done
         # Only a *live* connection dropping needs re-queueing; a failed connect
         # attempt is already handled by the connection loop that awaited it.
         if was_resolved and self.on_disconnect:

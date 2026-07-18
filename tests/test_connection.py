@@ -112,3 +112,51 @@ def test_run_loop_stops_on_event():
     stop.set()
     # already stopped -> returns immediately without calling connect_fn
     connection.run_connection_loop(c, lambda k: True, stop, sleep=lambda s: None)
+
+
+def test_backoff_exponent_is_clamped_not_a_bigint():
+    # A device that free-runs for a very long time must not compute an ever-
+    # growing 2**attempts; the exponent is clamped and the result stays <= max.
+    c = connection.ConnectionCoordinator(base_backoff=5.0, max_backoff=300.0,
+                                         get_time=lambda: 0.0)
+    assert c._backoff(1000) == 300.0        # clamped, no MemoryError / huge int
+
+
+def test_coordinator_is_thread_safe_under_concurrent_access():
+    # The real system calls mark_disconnected() from the gatt callback thread
+    # while next_due()/record_result() run on the connection-loop thread. With
+    # the lock this must not deadlock or raise; without it, _state access races.
+    import time as _time
+    c = connection.ConnectionCoordinator(base_backoff=0.0)
+    for k in ("a", "b", "c", "d"):
+        c.add(k)
+    stop = threading.Event()
+    errors = []
+
+    def loop_worker():
+        try:
+            while not stop.is_set():
+                k = c.next_due()
+                if k is not None:
+                    c.record_result(k, True)
+        except Exception as e:  # pragma: no cover - failure path
+            errors.append(e)
+
+    def drop_worker():
+        try:
+            while not stop.is_set():
+                for k in ("a", "b", "c", "d"):
+                    c.mark_disconnected(k)
+        except Exception as e:  # pragma: no cover - failure path
+            errors.append(e)
+
+    threads = [threading.Thread(target=loop_worker) for _ in range(3)]
+    threads += [threading.Thread(target=drop_worker) for _ in range(3)]
+    for t in threads:
+        t.start()
+    _time.sleep(0.3)
+    stop.set()
+    for t in threads:
+        t.join(timeout=2)
+    assert errors == []
+    assert not any(t.is_alive() for t in threads)
