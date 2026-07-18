@@ -9,7 +9,6 @@ import time
 import os
 import sys
 import gatt
-from gi.repository import GLib
 import time
 from datetime import datetime
 from dbus.exceptions import DBusException
@@ -62,6 +61,12 @@ class SolarDevice(gatt.Device):
         self.datalogger = datalogger
         self.queue = queue
         self._dropped = 0
+        # Connection coordination (see connection.py): the gatt callbacks set
+        # these; the connection loop's connect_fn awaits _connect_event.
+        self._connect_event = threading.Event()
+        self._connect_ok = False
+        self._resolved = False
+        self.on_disconnect = None
         self.run_device_poller = False
         self.poller_thread = None
         self.run_command_poller = False
@@ -121,21 +126,15 @@ class SolarDevice(gatt.Device):
             super().connect()
         except DBusException as e:
             logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
-            self._schedule_reconnect()
+            self._signal_connect_result(False)
             # sys.exit(100)
 
-    def _schedule_reconnect(self):
-        """Schedule a reconnect on the main loop. Never sleeps, never recurses —
-        connect_failed -> connect() -> connect_failed() is a recursive cycle that
-        blows the stack after ~an hour of a device being unreachable."""
-        if not self.auto_reconnect:
-            return
-        logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
-        GLib.timeout_add_seconds(10, self._reconnect_cb)
-
-    def _reconnect_cb(self):
-        self.connect()
-        return False  # one-shot: do not repeat
+    def _signal_connect_result(self, ok):
+        """Report a connect attempt's outcome to the waiting connection loop
+        (connection.py). Retry/backoff is the coordinator's job, not the
+        device's — so this never schedules its own reconnect."""
+        self._connect_ok = ok
+        self._connect_event.set()
 
     def connect_succeeded(self):
         super().connect_succeeded()
@@ -152,7 +151,8 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
             self.command_trigger.clear()
-        self._schedule_reconnect()
+        self._resolved = False
+        self._signal_connect_result(False)
 
 
     def disconnect_succeeded(self):
@@ -166,7 +166,13 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
             self.command_trigger.clear()
-        self._schedule_reconnect()
+        was_resolved = self._resolved
+        self._resolved = False
+        self._signal_connect_result(False)
+        # Only a *live* connection dropping needs re-queueing; a failed connect
+        # attempt is already handled by the connection loop that awaited it.
+        if was_resolved and self.on_disconnect:
+            self.on_disconnect()
 
     def services_resolved(self):
         super().services_resolved()
@@ -219,6 +225,10 @@ class SolarDevice(gatt.Device):
             self.command_thread.daemon = True
             self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
             self.command_thread.start()
+
+        # Fully connected and usable — tell the waiting connection loop it succeeded.
+        self._resolved = True
+        self._signal_connect_result(True)
 
 
 

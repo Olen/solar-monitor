@@ -18,9 +18,11 @@ from solardevice import SolarDeviceManager, SolarDevice
 from datalogger import DataLogger
 import duallog
 from supervisor import run_logger, LivenessTracker, supervise
+from connection import ConnectionCoordinator, run_connection_loop
 
 DISCOVERY_WINDOW = 5     # stop discovery after this many seconds with no new devices
 DISCOVERY_MAX_WAIT = 15  # hard cap on discovery duration (seconds)
+CONNECT_TIMEOUT = 40.0   # per-attempt wait for a device to resolve services
 
 
 class ConfigError(Exception):
@@ -84,18 +86,6 @@ def run_discovery(device_manager, max_wait=DISCOVERY_MAX_WAIT, window=DISCOVERY_
     logging.info("Found {} BLE-devices".format(len(device_manager.devices())))
 
 
-def threaded_poller(dev, device_manager, logger_name, config, datalogger, queue):
-    logging.info("Trying to connect to {}...".format(dev.mac_address))
-    try:
-        device = SolarDevice(mac_address=dev.mac_address, manager=device_manager,
-                             logger_name=logger_name, config=config,
-                             datalogger=datalogger, queue=queue)
-    except Exception as e:
-        logging.error(e)
-        return
-    device.connect()
-
-
 def main(argv=None):
     args = parse_args(argv)
     ini_file = args.ini or "solar-monitor.ini"
@@ -134,21 +124,32 @@ def main(argv=None):
 
     run_discovery(device_manager)
 
-    matched = 0
+    # Build a SolarDevice per configured device that was discovered, and register
+    # it with the connection coordinator. The coordinator connects them one at a
+    # time (see connection.py) instead of firing every connect concurrently —
+    # concurrent attempts collide and abort BLE service resolution.
+    coordinator = ConnectionCoordinator()
+    devices = {}
     for dev in device_manager.devices():
         logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
         for section in config.sections():
             if config.get(section, "mac", fallback=None) and config.get(section, "type", fallback=None):
                 mac = config.get(section, "mac").lower()
                 if dev.mac_address.lower() == mac:
-                    executor.submit(threaded_poller, dev, device_manager, section, config, datalogger, pipeline)
+                    try:
+                        device = SolarDevice(mac_address=dev.mac_address, manager=device_manager,
+                                             logger_name=section, config=config,
+                                             datalogger=datalogger, queue=pipeline)
+                    except Exception as e:
+                        logging.error("Could not set up device [%s]: %s", section, e)
+                        break
+                    device.on_disconnect = (lambda key=section: coordinator.mark_disconnected(key))
+                    devices[section] = device
+                    coordinator.add(section)
                     liveness.expect(section)
-                    matched += 1
-                    logging.info("Waiting for device to connect")
-                    time.sleep(1)
                     break
 
-    if matched == 0:
+    if not devices:
         logging.error("No configured devices were discovered; exiting for restart.")
         stop_event.set()
         return 1
@@ -161,11 +162,36 @@ def main(argv=None):
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    logging.debug("Waiting for devices to connect...")
-    time.sleep(10)
-
+    # The gatt main loop must run so connection callbacks (services_resolved,
+    # connect_failed, disconnect_succeeded) fire while we connect.
     loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
     loop_thread.start()
+
+    def connect_fn(key):
+        """Connect one device and block until it resolves services, fails, or
+        times out. Serialized by the connection loop — only one at a time."""
+        device = devices[key]
+        device._connect_ok = False
+        device._connect_event.clear()
+        logging.info("[%s] Connecting to %s", key, device.mac_address)
+        try:
+            device.connect()
+        except Exception as e:
+            logging.error("[%s] connect() raised: %s", key, e)
+            return False
+        if not device._connect_event.wait(CONNECT_TIMEOUT):
+            logging.warning("[%s] connect timed out after %ss", key, CONNECT_TIMEOUT)
+            try:
+                device.disconnect()
+            except Exception:
+                pass
+            return False
+        return device._connect_ok
+
+    conn_thread = threading.Thread(
+        target=run_connection_loop, args=(coordinator, connect_fn, stop_event),
+        name="connection-loop", daemon=True)
+    conn_thread.start()
 
     logging.info("Supervising; terminate with Ctrl+C or SIGTERM")
     exit_code = supervise(device_manager, logger_future, liveness, stop_event,
@@ -173,10 +199,10 @@ def main(argv=None):
 
     stop_event.set()
     device_manager.stop()
-    for dev in device_manager.devices():
+    for device in devices.values():
         try:
-            dev.disconnect()
+            device.disconnect()
         except Exception as e:
-            logging.warning("Error disconnecting %s: %s", getattr(dev, "mac_address", "?"), e)
+            logging.warning("Error disconnecting %s: %s", getattr(device, "mac_address", "?"), e)
 
     return exit_code

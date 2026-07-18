@@ -1,43 +1,63 @@
+import inspect
 import solardevice
 
 
-def _reconnecting_device():
+def _bare_device():
+    # type=None -> __init__ returns early (no plugin/gatt setup), giving a
+    # lightweight object with the connection-signalling attributes present.
     dev = solardevice.SolarDevice(mac_address="aa:bb:cc:dd:ee:ff", manager=None)
-    dev.auto_reconnect = True
     dev.logger_name = "reg"
     dev.poller_thread = None
     dev.command_thread = None
     return dev
 
 
-def test_schedule_reconnect_uses_glib_and_does_not_recurse(fake_glib):
-    dev = _reconnecting_device()
-    connect_calls = {"n": 0}
-    dev.connect = lambda: connect_calls.__setitem__("n", connect_calls["n"] + 1)
-
-    dev._schedule_reconnect()
-
-    # It scheduled a delayed retry rather than calling connect() synchronously.
-    assert connect_calls["n"] == 0
-    assert len(fake_glib.scheduled) == 1
-    delay, cb = fake_glib.scheduled[0]
-    assert delay == 10
-    # The scheduled callback returns False (one-shot) and calls connect once.
-    assert cb() is False
-    assert connect_calls["n"] == 1
+def test_signal_connect_result_sets_event_and_flag():
+    dev = _bare_device()
+    assert not dev._connect_event.is_set()
+    dev._signal_connect_result(True)
+    assert dev._connect_event.is_set()
+    assert dev._connect_ok is True
+    dev._connect_event.clear()
+    dev._signal_connect_result(False)
+    assert dev._connect_event.is_set()
+    assert dev._connect_ok is False
 
 
-def test_schedule_reconnect_noop_when_disabled(fake_glib):
-    dev = _reconnecting_device()
-    dev.auto_reconnect = False
-    dev._schedule_reconnect()
-    assert fake_glib.scheduled == []
+def test_connect_failed_signals_failure_to_the_waiting_loop():
+    dev = _bare_device()
+    dev.connect_failed("le-connection-abort-by-local")
+    assert dev._connect_event.is_set()
+    assert dev._connect_ok is False
+    assert dev._resolved is False
 
 
-import inspect
+def test_disconnect_of_a_live_connection_requeues_via_on_disconnect():
+    dev = _bare_device()
+    dev._resolved = True                     # simulate a fully-connected device
+    called = {"n": 0}
+    dev.on_disconnect = lambda: called.__setitem__("n", called["n"] + 1)
+    dev.disconnect_succeeded()
+    assert called["n"] == 1                  # live drop -> re-queued
+    assert dev._connect_event.is_set()       # also unblocks any waiter
+    assert dev._resolved is False
 
 
-def test_no_time_sleep_in_gatt_callbacks():
+def test_disconnect_during_a_failed_attempt_does_not_requeue():
+    dev = _bare_device()
+    dev._resolved = False                    # was never resolved (attempt failed)
+    called = {"n": 0}
+    dev.on_disconnect = lambda: called.__setitem__("n", called["n"] + 1)
+    dev.disconnect_succeeded()
+    assert called["n"] == 0                  # the connection loop handles this one
+    assert dev._connect_event.is_set()
+
+
+def test_no_time_sleep_or_glib_reconnect_in_gatt_callbacks():
+    # gatt callbacks must not block, and must not schedule their own reconnect
+    # (retry/backoff is the coordinator's job now).
     src = inspect.getsource(solardevice.SolarDevice.connect_failed)
     src += inspect.getsource(solardevice.SolarDevice.disconnect_succeeded)
+    src += inspect.getsource(solardevice.SolarDevice.connect)
     assert "time.sleep" not in src, "gatt callback must not block on time.sleep"
+    assert "GLib" not in src, "device must not schedule its own reconnect"
