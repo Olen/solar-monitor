@@ -1,6 +1,7 @@
 [Unit]
 Description=Solar Monitor
-After=network.target
+After=network.target bluetooth.service
+Wants=bluetooth.service
  
 [Service]
 Type=simple

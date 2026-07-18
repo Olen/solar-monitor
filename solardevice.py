@@ -9,12 +9,15 @@ import time
 import os
 import sys
 import gatt
+from gi.repository import GLib
 import time
 from datetime import datetime
 from dbus.exceptions import DBusException
 
 # import duallog
 import logging
+
+from supervisor import try_put
 
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
@@ -58,6 +61,7 @@ class SolarDevice(gatt.Device):
         self.device_write_characteristic_commands = None
         self.datalogger = datalogger
         self.queue = queue
+        self._dropped = 0
         self.run_device_poller = False
         self.poller_thread = None
         self.run_command_poller = False
@@ -117,8 +121,21 @@ class SolarDevice(gatt.Device):
             super().connect()
         except DBusException as e:
             logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
-            time.sleep(10)
+            self._schedule_reconnect()
             # sys.exit(100)
+
+    def _schedule_reconnect(self):
+        """Schedule a reconnect on the main loop. Never sleeps, never recurses —
+        connect_failed -> connect() -> connect_failed() is a recursive cycle that
+        blows the stack after ~an hour of a device being unreachable."""
+        if not self.auto_reconnect:
+            return
+        logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
+        GLib.timeout_add_seconds(10, self._reconnect_cb)
+
+    def _reconnect_cb(self):
+        self.connect()
+        return False  # one-shot: do not repeat
 
     def connect_succeeded(self):
         super().connect_succeeded()
@@ -135,11 +152,7 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
             self.command_trigger.clear()
-        if self.auto_reconnect:
-            logging.info("[{}] Reconnecting in 10 seconds...".format(self.logger_name))
-            # self.sleeper.wait(10)
-            time.sleep(10)
-            self.connect()
+        self._schedule_reconnect()
 
 
     def disconnect_succeeded(self):
@@ -153,11 +166,7 @@ class SolarDevice(gatt.Device):
             self.run_command_poller = False
             self.command_trigger.set()
             self.command_trigger.clear()
-        if self.auto_reconnect:
-            logging.info("[{}] Reconnecting in 10 seconds".format(self.logger_name))
-            # self.sleeper.wait(10)
-            time.sleep(10)
-            self.connect()
+        self._schedule_reconnect()
 
     def services_resolved(self):
         super().services_resolved()
@@ -214,6 +223,18 @@ class SolarDevice(gatt.Device):
 
 
 
+    def _enqueue(self, item):
+        """Non-blocking enqueue. Dropping a sample is always better than
+        blocking the dbus main-loop thread inside a gatt callback."""
+        if not try_put(self.queue, item):
+            self._dropped += 1
+            if self._dropped % 100 == 1:
+                logging.warning(
+                    "[{}] Log queue full; dropped {} samples (consumer stalled?)".format(
+                        self.logger_name, self._dropped
+                    )
+                )
+
     def characteristic_value_updated(self, characteristic, value):
         super().characteristic_value_updated(characteristic, value)
 
@@ -235,15 +256,15 @@ class SolarDevice(gatt.Device):
             for item in items:
                 try:
                     logging.debug(f"Logging data: {self.logger_name}, {item}, {getattr(self.entities, item)}")
-                    self.queue.put((self.logger_name, item, getattr(self.entities, item)))
+                    self._enqueue((self.logger_name, item, getattr(self.entities, item)))
                 except Exception as e:
                     logging.debug("[{}] Could not find {}".format(self.logger_name, item))
                     pass
 
             # We want celsius, not kelvin
             try:
-                self.queue.put((self.logger_name, 'temperature', self.entities.temperature_celsius))
-                self.queue.put((self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius))
+                self._enqueue((self.logger_name, 'temperature', self.entities.temperature_celsius))
+                self._enqueue((self.logger_name, 'battery_temperature', self.entities.battery_temperature_celsius))
 
             except:
                 pass
@@ -252,7 +273,7 @@ class SolarDevice(gatt.Device):
             try:
                 for cell in self.entities.cell_mvoltage:
                     if self.entities.cell_mvoltage[cell]['val'] > 0:
-                        self.queue.put((self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell]['val']))
+                        self._enqueue((self.logger_name, 'cell_{}'.format(cell), self.entities.cell_mvoltage[cell]['val']))
             except:
                 pass
 
@@ -260,7 +281,7 @@ class SolarDevice(gatt.Device):
             try:
                 for cell in self.entities.cell_voltage:
                     if self.entities.cell_voltage[cell]['val'] > 0:
-                        self.queue.put((self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val']))
+                        self._enqueue((self.logger_name, 'cell_{}_voltage'.format(cell), self.entities.cell_voltage[cell]['val']))
             except:
                 pass
 
@@ -713,7 +734,7 @@ class PowerDevice():
         if value != self._power_switch:
             self._power_switch = value
             try:
-                self.queue.put((self.logger_name, 'power_switch', self.power_switch))
+                self.parent._enqueue((self.name, 'power_switch', self.power_switch))
             except:
                 pass
 
