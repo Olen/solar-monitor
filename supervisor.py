@@ -78,7 +78,11 @@ def supervise(device_manager, logger_future, liveness, stop_event,
         if on_tick is not None:
             on_tick()
         if logger_future is not None and logger_future.done():
-            logging.error("Consumer thread has died; exiting for restart.")
+            exc = logger_future.exception()
+            if exc is not None:
+                logging.error("Consumer thread died: %r; exiting for restart.", exc, exc_info=exc)
+            else:
+                logging.error("Consumer thread exited unexpectedly; exiting for restart.")
             device_manager.stop()
             return 1
         if liveness.any_expected():

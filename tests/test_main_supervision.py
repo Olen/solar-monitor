@@ -3,11 +3,15 @@ import supervisor
 
 
 class _FakeFuture:
-    def __init__(self, done=False):
+    def __init__(self, done=False, exc=None):
         self._done = done
+        self._exc = exc
 
     def done(self):
         return self._done
+
+    def exception(self):
+        return self._exc
 
 
 class _FakeDM:
@@ -26,6 +30,21 @@ def test_supervise_exits_1_when_logger_future_dies():
     rc = supervisor.supervise(dm, fut, lt, stop, check_interval=0.01, stale_timeout=999)
     assert rc == 1
     assert dm.stopped is True
+
+
+def test_supervise_logs_the_cause_when_consumer_dies(caplog):
+    # A restart is useless without the reason; the captured future exception
+    # must reach the log so a remote operator sees why the consumer died.
+    dm = _FakeDM()
+    boom = RuntimeError("sink exploded")
+    fut = _FakeFuture(done=True, exc=boom)
+    lt = supervisor.LivenessTracker()
+    stop = threading.Event()
+    with caplog.at_level("ERROR"):
+        rc = supervisor.supervise(dm, fut, lt, stop, check_interval=0.01, stale_timeout=999)
+    assert rc == 1
+    assert dm.stopped is True
+    assert "sink exploded" in caplog.text
 
 
 def test_supervise_exits_1_when_all_devices_stale():
