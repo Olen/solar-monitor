@@ -11,6 +11,7 @@ import sys
 import gatt
 import time
 from datetime import datetime
+import dbus
 from dbus.exceptions import DBusException
 
 # import duallog
@@ -134,6 +135,21 @@ class SolarDevice(gatt.Device):
             logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
             self._signal_connect_result(False)
             # sys.exit(100)
+
+    def set_trusted(self):
+        """Mark the device Trusted in BlueZ. A trusted device is not a
+        'temporary' device, so BlueZ keeps its object instead of removing it
+        ~30s after discovery stops (which otherwise makes a later connect fail
+        with 'Device does not exist'), and BlueZ will auto-reconnect it. gatt
+        does not expose this, so set the org.bluez.Device1 property directly.
+        The device must already be discovered (its BlueZ object must exist)."""
+        try:
+            self._properties.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(True))
+            logging.info("[{}] Marked Trusted".format(self.logger_name))
+            return True
+        except Exception as e:
+            logging.warning("[{}] Could not set Trusted: {}".format(self.logger_name, e))
+            return False
 
     def _signal_connect_result(self, ok):
         """Report a connect attempt's outcome to the waiting connection loop

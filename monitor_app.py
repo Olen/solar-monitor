@@ -169,6 +169,9 @@ def main(argv=None):
         except Exception as e:
             logging.error("Could not set up device [%s]: %s", section, e)
             return False
+        # Trust it so BlueZ keeps it (no ~30s temporary-device removal) and can
+        # auto-reconnect it — the device is discovered here, so its object exists.
+        device.set_trusted()
         device.on_disconnect = (lambda key=section: coordinator.mark_disconnected(key))
         devices[section] = device
         coordinator.add(section)

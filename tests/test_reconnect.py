@@ -43,6 +43,13 @@ def test_disconnect_of_a_live_connection_requeues_via_on_disconnect():
     assert dev._resolved is False
 
 
+def test_set_trusted_is_defensive_when_dbus_object_missing():
+    # On a bare (unmanaged) device the gatt dbus properties object isn't set up;
+    # set_trusted must not raise, just return False and log.
+    dev = _bare_device()
+    assert dev.set_trusted() is False
+
+
 def test_disconnect_sets_the_drain_event():
     # A failed connect_fn drains by waiting on _disconnect_event; disconnect_
     # succeeded must set it so teardown can't bleed into the next attempt.
