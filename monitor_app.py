@@ -25,6 +25,7 @@ DISCOVERY_MAX_WAIT = 15  # hard cap on discovery duration (seconds)
 CONNECT_TIMEOUT = 40.0   # per-attempt wait for a device to resolve services
 DISCOVER_REFRESH = 3.0   # brief re-scan before a connect so BlueZ still knows the device
 DRAIN_TIMEOUT = 4.0      # wait for a failed device to fully tear down before the next attempt
+REDISCOVER_INTERVAL = 60.0  # how often to re-scan for configured devices that appear after startup
 
 
 class ConfigError(Exception):
@@ -126,30 +127,58 @@ def main(argv=None):
 
     run_discovery(device_manager)
 
-    # Build a SolarDevice per configured device that was discovered, and register
-    # it with the connection coordinator. The coordinator connects them one at a
-    # time (see connection.py) instead of firing every connect concurrently —
-    # concurrent attempts collide and abort BLE service resolution.
+    # The connection coordinator connects devices one at a time (see
+    # connection.py) instead of firing every connect concurrently — concurrent
+    # attempts collide and abort BLE service resolution.
     coordinator = ConnectionCoordinator()
-    devices = {}
-    for dev in device_manager.devices():
-        logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
-        for section in config.sections():
-            if config.get(section, "mac", fallback=None) and config.get(section, "type", fallback=None):
-                mac = config.get(section, "mac").lower()
-                if dev.mac_address.lower() == mac:
-                    try:
-                        device = SolarDevice(mac_address=dev.mac_address, manager=device_manager,
-                                             logger_name=section, config=config,
-                                             datalogger=datalogger, queue=pipeline)
-                    except Exception as e:
-                        logging.error("Could not set up device [%s]: %s", section, e)
-                        break
-                    device.on_disconnect = (lambda key=section: coordinator.mark_disconnected(key))
-                    devices[section] = device
-                    coordinator.add(section)
-                    liveness.expect(section)
-                    break
+    # All configured devices (section -> mac), whether or not discovered yet.
+    configured = {}
+    for section in config.sections():
+        mac = config.get(section, "mac", fallback=None)
+        dtype = config.get(section, "type", fallback=None)
+        if mac and dtype:
+            configured[section] = mac.lower()
+    devices = {}   # section -> SolarDevice, once registered
+
+    def _refresh_discovery():
+        """Briefly re-scan so BlueZ still knows the devices (it forgets ones it
+        has not seen recently, causing 'Device does not exist' on connect) and so
+        devices that start advertising after startup can be found. Stopped before
+        any connect — scanning and connecting collide."""
+        try:
+            device_manager.start_discovery()
+            time.sleep(DISCOVER_REFRESH)
+            device_manager.stop_discovery()
+            time.sleep(1)   # let discovery fully stop before we connect
+        except Exception as e:
+            logging.debug("Discovery refresh failed: %s", e)
+
+    def _register(section):
+        """Create and register a SolarDevice for a configured section whose MAC is
+        currently discovered. Returns True if newly registered."""
+        if section in devices:
+            return False
+        mac = configured[section]
+        disc = next((d for d in device_manager.devices() if d.mac_address.lower() == mac), None)
+        if disc is None:
+            return False
+        try:
+            device = SolarDevice(mac_address=disc.mac_address, manager=device_manager,
+                                 logger_name=section, config=config,
+                                 datalogger=datalogger, queue=pipeline)
+        except Exception as e:
+            logging.error("Could not set up device [%s]: %s", section, e)
+            return False
+        device.on_disconnect = (lambda key=section: coordinator.mark_disconnected(key))
+        devices[section] = device
+        coordinator.add(section)
+        liveness.expect(section)
+        logging.info("Registered device [%s] %s", section, mac)
+        return True
+
+    # Register the configured devices found during the startup scan.
+    for section in configured:
+        _register(section)
 
     if not devices:
         logging.error("No configured devices were discovered; exiting for restart.")
@@ -168,20 +197,6 @@ def main(argv=None):
     # connect_failed, disconnect_succeeded) fire while we connect.
     loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
     loop_thread.start()
-
-    def _refresh_discovery():
-        """Briefly re-scan so BlueZ still knows the device. It forgets devices it
-        has not seen recently, which makes a later connect fail with 'Device does
-        not exist'. Serialized connects are spaced out, so without this the
-        startup discovery cache expires between attempts. The scan is stopped
-        before connecting (scanning + connecting collide)."""
-        try:
-            device_manager.start_discovery()
-            time.sleep(DISCOVER_REFRESH)
-            device_manager.stop_discovery()
-            time.sleep(1)   # let discovery fully stop before we connect
-        except Exception as e:
-            logging.debug("Discovery refresh failed: %s", e)
 
     def _drain(device):
         """Fully disconnect a failed device and wait for teardown, so a late
@@ -214,8 +229,27 @@ def main(argv=None):
             _drain(device)
         return ok
 
+    rediscover = {"last": 0.0}
+
+    def _on_idle():
+        """When the loop has nothing due, periodically re-scan for configured
+        devices that started advertising after startup (e.g. a battery whose BMS
+        was reset) and register them so the loop begins connecting them."""
+        missing = [s for s in configured if s not in devices]
+        if not missing:
+            return
+        now = time.time()
+        if now - rediscover["last"] < REDISCOVER_INTERVAL:
+            return
+        rediscover["last"] = now
+        logging.info("Re-discovering for late devices: %s", ", ".join(sorted(missing)))
+        _refresh_discovery()
+        for section in missing:
+            _register(section)
+
     conn_thread = threading.Thread(
         target=run_connection_loop, args=(coordinator, connect_fn, stop_event),
+        kwargs={"on_idle": _on_idle},
         name="connection-loop", daemon=True)
     conn_thread.start()
 
