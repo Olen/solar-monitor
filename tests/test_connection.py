@@ -1,45 +1,54 @@
 import threading
 import connection
 
+NO_JITTER = lambda a, b: 0.0   # deterministic rand for exact-value assertions
+
 
 def test_backoff_grows_then_caps():
-    assert connection.backoff_seconds(1, base=5, maximum=300) == 5
-    assert connection.backoff_seconds(2, base=5, maximum=300) == 10
-    assert connection.backoff_seconds(3, base=5, maximum=300) == 20
-    assert connection.backoff_seconds(4, base=5, maximum=300) == 40
-    assert connection.backoff_seconds(100, base=5, maximum=300) == 300   # capped
+    b = lambda n: connection.backoff_seconds(n, base=5, maximum=300, rand=NO_JITTER)
+    assert b(1) == 5
+    assert b(2) == 10
+    assert b(3) == 20
+    assert b(4) == 40
+    assert b(100) == 300   # capped
 
 
 def test_backoff_clamped_not_a_bigint():
-    # A device that free-runs forever must not compute an ever-growing 2**attempt.
-    assert connection.backoff_seconds(10_000, base=5, maximum=300) == 300
+    assert connection.backoff_seconds(10_000, base=5, maximum=300, rand=NO_JITTER) == 300
 
 
 def test_backoff_attempt_floor():
-    assert connection.backoff_seconds(0, base=5, maximum=300) == 5   # treated as attempt 1
+    assert connection.backoff_seconds(0, base=5, maximum=300, rand=NO_JITTER) == 5
+
+
+def test_backoff_applies_jitter_to_spread_retries():
+    # With jitter, the delay is offset by rand(-jitter, jitter). A rand that
+    # returns its upper bound gives delay + jitter; never negative.
+    hi = connection.backoff_seconds(1, base=10, jitter=5, rand=lambda a, b: b)
+    lo = connection.backoff_seconds(1, base=10, jitter=5, rand=lambda a, b: a)
+    assert hi == 15 and lo == 5                         # first retry spread over 5..15
+    # jitter never drives the delay below zero
+    assert connection.backoff_seconds(1, base=1, jitter=100, rand=lambda a, b: a) == 0.0
 
 
 def test_maintain_backs_off_on_repeated_failure():
-    # connect_fn always fails -> backoff delays should be 5, 10, 20, ... until stop.
     delays = []
     stop = threading.Event()
 
     def connect_fn():
-        return False                      # never connects
+        return False
 
     def fake_sleep(d):
         delays.append(d)
         if len(delays) >= 4:
-            stop.set()                    # end the loop after 4 backoffs
+            stop.set()
 
     connection.maintain_device("reg", connect_fn, stop, base_backoff=5,
-                               max_backoff=300, sleep=fake_sleep)
-    assert delays == [5, 10, 20, 40]      # exponential
+                               max_backoff=300, rand=NO_JITTER, sleep=fake_sleep)
+    assert delays == [5, 10, 20, 40]
 
 
 def test_maintain_resets_backoff_after_a_good_connection():
-    # fail, fail, then a good connection (returns True) resets the backoff so the
-    # next failure starts at base again.
     outcomes = iter([False, False, True, False])
     delays = []
     stop = threading.Event()
@@ -51,13 +60,9 @@ def test_maintain_resets_backoff_after_a_good_connection():
             stop.set()
             return False
 
-    def fake_sleep(d):
-        delays.append(d)
-
     connection.maintain_device("reg", connect_fn, stop, base_backoff=5,
-                               max_backoff=300, sleep=fake_sleep)
-    # delays: 5 (after 1st fail), 10 (after 2nd fail), [True resets], 5 (after next fail)
-    assert delays == [5, 10, 5]
+                               max_backoff=300, rand=NO_JITTER, sleep=delays.append)
+    assert delays == [5, 10, 5]     # good connection resets the backoff
 
 
 def test_maintain_stops_on_event_without_calling_connect():
@@ -70,7 +75,7 @@ def test_maintain_stops_on_event_without_calling_connect():
         return False
 
     connection.maintain_device("reg", connect_fn, stop, sleep=lambda d: None)
-    assert calls["n"] == 0                 # already stopped -> never attempts
+    assert calls["n"] == 0
 
 
 def test_maintain_treats_connect_exception_as_failure():
@@ -84,5 +89,6 @@ def test_maintain_treats_connect_exception_as_failure():
         delays.append(d)
         stop.set()
 
-    connection.maintain_device("reg", connect_fn, stop, base_backoff=5, sleep=fake_sleep)
-    assert delays == [5]                   # exception -> backoff, no crash
+    connection.maintain_device("reg", connect_fn, stop, base_backoff=5,
+                               rand=NO_JITTER, sleep=fake_sleep)
+    assert delays == [5]            # exception -> backoff, no crash
