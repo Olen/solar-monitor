@@ -210,9 +210,13 @@ def main(argv=None):
 
     def connect_fn(key):
         """Connect one device and block until it resolves services, fails, or
-        times out. Serialized by the connection loop — only one at a time."""
+        times out. Serialized by the connection loop — only one at a time.
+
+        Deliberately does NOT scan here: scanning immediately before a connect
+        collides with it and aborts service resolution (this is what the old
+        concurrent code got right — it connected straight from the startup scan's
+        still-fresh cache). Cache freshness is kept up by _on_idle instead."""
         device = devices[key]
-        _refresh_discovery()
         device._connect_ok = False
         device._connect_event.clear()
         logging.info("[%s] Connecting to %s", key, device.mac_address)
@@ -232,17 +236,24 @@ def main(argv=None):
     rediscover = {"last": 0.0}
 
     def _on_idle():
-        """When the loop has nothing due, periodically re-scan for configured
-        devices that started advertising after startup (e.g. a battery whose BMS
-        was reset) and register them so the loop begins connecting them."""
+        """Periodically re-scan while anything is not connected. This keeps
+        BlueZ's device cache fresh for reconnects (it forgets devices it has not
+        seen, which otherwise makes a later connect fail with 'Device does not
+        exist') and registers configured devices that started advertising after
+        startup (e.g. a battery whose BMS was reset). It runs here, between
+        connects, NOT before each connect — scanning right before a connect
+        collides with it and aborts service resolution."""
         missing = [s for s in configured if s not in devices]
-        if not missing:
-            return
+        if not missing and coordinator.all_connected():
+            return   # everything registered and connected — no need to scan
         now = time.time()
         if now - rediscover["last"] < REDISCOVER_INTERVAL:
             return
         rediscover["last"] = now
-        logging.info("Re-discovering for late devices: %s", ", ".join(sorted(missing)))
+        if missing:
+            logging.info("Re-discovering (late devices / cache refresh): %s", ", ".join(sorted(missing)))
+        else:
+            logging.debug("Re-discovering to refresh the cache for disconnected devices")
         _refresh_discovery()
         for section in missing:
             _register(section)
