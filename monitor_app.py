@@ -18,14 +18,14 @@ from solardevice import SolarDeviceManager, SolarDevice
 from datalogger import DataLogger
 import duallog
 from supervisor import run_logger, LivenessTracker, supervise
-from connection import ConnectionCoordinator, run_connection_loop
+from connection import maintain_device
 
 DISCOVERY_WINDOW = 5     # stop discovery after this many seconds with no new devices
 DISCOVERY_MAX_WAIT = 15  # hard cap on discovery duration (seconds)
 CONNECT_TIMEOUT = 40.0   # per-attempt wait for a device to resolve services
-DISCOVER_REFRESH = 3.0   # brief re-scan before a connect so BlueZ still knows the device
-DRAIN_TIMEOUT = 4.0      # wait for a failed device to fully tear down before the next attempt
-REDISCOVER_INTERVAL = 60.0  # how often to re-scan for configured devices that appear after startup
+CONNECT_STAGGER = 1.0    # delay between starting each device's connect (like the old code)
+HOLD_POLL = 5.0          # while connected, how often to check the device is still up
+REDISCOVER_INTERVAL = 120.0  # how often to re-scan for configured devices that appear after startup
 
 
 class ConfigError(Exception):
@@ -127,10 +127,6 @@ def main(argv=None):
 
     run_discovery(device_manager)
 
-    # The connection coordinator connects devices one at a time (see
-    # connection.py) instead of firing every connect concurrently — concurrent
-    # attempts collide and abort BLE service resolution.
-    coordinator = ConnectionCoordinator()
     # All configured devices (section -> mac), whether or not discovered yet.
     configured = {}
     for section in config.sections():
@@ -140,22 +136,45 @@ def main(argv=None):
             configured[section] = mac.lower()
     devices = {}   # section -> SolarDevice, once registered
 
-    def _refresh_discovery():
-        """Briefly re-scan so BlueZ still knows the devices (it forgets ones it
-        has not seen recently, causing 'Device does not exist' on connect) and so
-        devices that start advertising after startup can be found. Stopped before
-        any connect — scanning and connecting collide."""
-        try:
-            device_manager.start_discovery()
-            time.sleep(DISCOVER_REFRESH)
-            device_manager.stop_discovery()
-            time.sleep(1)   # let discovery fully stop before we connect
-        except Exception as e:
-            logging.debug("Discovery refresh failed: %s", e)
+    def _handle_signal(signum, _frame):
+        logging.info("Received signal %s; shutting down.", signum)
+        stop_event.set()
+        device_manager.stop()
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    # The gatt main loop must run so connection callbacks (services_resolved,
+    # connect_failed, disconnect_succeeded) fire while we connect.
+    loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
+    loop_thread.start()
+
+    def _make_connect_fn(device):
+        """One connect attempt for maintain_device: connect, and if it resolves,
+        hold until it drops. Returns True if it had connected (and has now
+        dropped), False if it never connected."""
+        def connect_once():
+            device._connect_ok = False
+            device._connect_event.clear()
+            logging.info("[%s] Connecting to %s", device.logger_name, device.mac_address)
+            try:
+                device.connect()
+            except Exception as e:
+                logging.error("[%s] connect() raised: %s", device.logger_name, e)
+                return False
+            if not (device._connect_event.wait(CONNECT_TIMEOUT) and device._connect_ok):
+                return False
+            # Connected and resolved — hold the connection until it drops.
+            device._disconnect_event.clear()
+            while not stop_event.is_set():
+                if device._disconnect_event.wait(HOLD_POLL):
+                    break
+            return True
+        return connect_once
 
     def _register(section):
-        """Create and register a SolarDevice for a configured section whose MAC is
-        currently discovered. Returns True if newly registered."""
+        """Create + trust a SolarDevice for a discovered configured section and
+        start its maintenance thread. Returns True if newly registered."""
         if section in devices:
             return False
         mac = configured[section]
@@ -172,100 +191,47 @@ def main(argv=None):
         # Trust it so BlueZ keeps it (no ~30s temporary-device removal) and can
         # auto-reconnect it — the device is discovered here, so its object exists.
         device.set_trusted()
-        device.on_disconnect = (lambda key=section: coordinator.mark_disconnected(key))
         devices[section] = device
-        coordinator.add(section)
         liveness.expect(section)
+        threading.Thread(target=maintain_device,
+                         args=(section, _make_connect_fn(device), stop_event),
+                         name="connect-%s" % section, daemon=True).start()
         logging.info("Registered device [%s] %s", section, mac)
         return True
 
-    # Register the configured devices found during the startup scan.
+    # Start each discovered device's connect concurrently, staggered like the old
+    # code — that is what the hardware actually connects reliably; strict
+    # serialization was worse.
     for section in configured:
-        _register(section)
+        if _register(section):
+            time.sleep(CONNECT_STAGGER)
 
     if not devices:
         logging.error("No configured devices were discovered; exiting for restart.")
         stop_event.set()
         return 1
 
-    def _handle_signal(signum, _frame):
-        logging.info("Received signal %s; shutting down.", signum)
-        stop_event.set()
-        device_manager.stop()
+    def _late_discovery_loop():
+        """Occasionally re-scan for configured devices that started advertising
+        after startup (e.g. a battery whose BMS was reset) and start maintaining
+        them. Trusted devices persist, so this only runs while something is still
+        missing — and it is the one place we scan while connections may be held,
+        so it is infrequent."""
+        while not stop_event.wait(REDISCOVER_INTERVAL):
+            missing = [s for s in configured if s not in devices]
+            if not missing:
+                continue
+            logging.info("Re-discovering for late devices: %s", ", ".join(sorted(missing)))
+            try:
+                device_manager.start_discovery()
+                stop_event.wait(DISCOVERY_WINDOW)
+                device_manager.stop_discovery()
+            except Exception as e:
+                logging.debug("Late discovery scan failed: %s", e)
+            for section in missing:
+                _register(section)
 
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
-
-    # The gatt main loop must run so connection callbacks (services_resolved,
-    # connect_failed, disconnect_succeeded) fire while we connect.
-    loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
-    loop_thread.start()
-
-    def _drain(device):
-        """Fully disconnect a failed device and wait for teardown, so a late
-        callback from this attempt cannot bleed into the next one."""
-        device._disconnect_event.clear()
-        try:
-            device.disconnect()
-        except Exception:
-            pass
-        device._disconnect_event.wait(DRAIN_TIMEOUT)
-
-    def connect_fn(key):
-        """Connect one device and block until it resolves services, fails, or
-        times out. Serialized by the connection loop — only one at a time.
-
-        Deliberately does NOT scan here: scanning immediately before a connect
-        collides with it and aborts service resolution (this is what the old
-        concurrent code got right — it connected straight from the startup scan's
-        still-fresh cache). Cache freshness is kept up by _on_idle instead."""
-        device = devices[key]
-        device._connect_ok = False
-        device._connect_event.clear()
-        logging.info("[%s] Connecting to %s", key, device.mac_address)
-        try:
-            device.connect()
-        except Exception as e:
-            logging.error("[%s] connect() raised: %s", key, e)
-            _drain(device)
-            return False
-        ok = device._connect_event.wait(CONNECT_TIMEOUT) and device._connect_ok
-        if not ok:
-            if not device._connect_event.is_set():
-                logging.warning("[%s] connect timed out after %ss", key, CONNECT_TIMEOUT)
-            _drain(device)
-        return ok
-
-    rediscover = {"last": 0.0}
-
-    def _on_idle():
-        """Periodically re-scan while anything is not connected. This keeps
-        BlueZ's device cache fresh for reconnects (it forgets devices it has not
-        seen, which otherwise makes a later connect fail with 'Device does not
-        exist') and registers configured devices that started advertising after
-        startup (e.g. a battery whose BMS was reset). It runs here, between
-        connects, NOT before each connect — scanning right before a connect
-        collides with it and aborts service resolution."""
-        missing = [s for s in configured if s not in devices]
-        if not missing and coordinator.all_connected():
-            return   # everything registered and connected — no need to scan
-        now = time.time()
-        if now - rediscover["last"] < REDISCOVER_INTERVAL:
-            return
-        rediscover["last"] = now
-        if missing:
-            logging.info("Re-discovering (late devices / cache refresh): %s", ", ".join(sorted(missing)))
-        else:
-            logging.debug("Re-discovering to refresh the cache for disconnected devices")
-        _refresh_discovery()
-        for section in missing:
-            _register(section)
-
-    conn_thread = threading.Thread(
-        target=run_connection_loop, args=(coordinator, connect_fn, stop_event),
-        kwargs={"on_idle": _on_idle},
-        name="connection-loop", daemon=True)
-    conn_thread.start()
+    threading.Thread(target=_late_discovery_loop, name="late-discovery", daemon=True).start()
 
     logging.info("Supervising; terminate with Ctrl+C or SIGTERM")
     exit_code = supervise(device_manager, logger_future, liveness, stop_event,
@@ -273,7 +239,6 @@ def main(argv=None):
 
     stop_event.set()
     device_manager.stop()
-    conn_thread.join(timeout=2)   # let the connection loop finish its current step
     for device in devices.values():
         try:
             device.disconnect()
