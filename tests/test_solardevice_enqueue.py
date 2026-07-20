@@ -5,10 +5,12 @@ import solardevice  # conftest stubs gatt
 
 
 def _make_device():
-    # SolarDevice.__init__ returns early (no plugin import) when type is None,
-    # which is exactly the lightweight object we want for enqueue tests.
+    # SolarDevice.__init__ returns early (no plugin import) when config/type is
+    # None, which is exactly the lightweight object we want for enqueue tests.
+    # (SolarDevice is transport-free now — no `manager` kwarg; see
+    # docs/superpowers/plans/2026-07-20-bleak-migration.md Task 2.)
     dev = solardevice.SolarDevice(
-        mac_address="11:22:33:44:55:66", manager=None, queue=queue.Queue(maxsize=1)
+        mac_address="11:22:33:44:55:66", queue=queue.Queue(maxsize=1)
     )
     return dev
 

@@ -12,19 +12,27 @@ import logging
 import queue
 import signal
 import threading
-import time
 
-from solardevice import SolarDeviceManager, SolarDevice
+from solardevice import SolarDevice
 from datalogger import DataLogger
 import duallog
 from supervisor import run_logger, LivenessTracker, supervise
+import ble
 
 DISCOVERY_WINDOW = 5     # stop discovery after this many seconds with no new devices
 DISCOVERY_MAX_WAIT = 15  # hard cap on discovery duration (seconds)
+REDISCOVER_INTERVAL = 120.0  # how often to re-scan for configured devices that appear after startup
 
 
 class ConfigError(Exception):
     """The ini file is missing/unreadable or lacks the [monitor] section."""
+
+
+class _NullManager:
+    """Satisfies supervise()'s `device_manager.stop()` call; the real shutdown
+    of BleManager is done explicitly in main() after supervise() returns."""
+    def stop(self):
+        pass
 
 
 def parse_args(argv=None):
@@ -66,36 +74,6 @@ def discovery_complete(found, window=DISCOVERY_WINDOW):
     return found[-1] == found[-1 - window]
 
 
-def run_discovery(device_manager, max_wait=DISCOVERY_MAX_WAIT, window=DISCOVERY_WINDOW, sleep=time.sleep):
-    device_manager.update_devices()
-    logging.info("Starting discovery...")
-    device_manager.start_discovery()
-    found = []
-    waited = 0
-    while True:
-        sleep(1)
-        waited += 1
-        f = len(device_manager.devices())
-        logging.debug("Found {} BLE-devices so far".format(f))
-        found.append(f)
-        if discovery_complete(found, window) or waited >= max_wait:
-            break
-    device_manager.stop_discovery()
-    logging.info("Found {} BLE-devices".format(len(device_manager.devices())))
-
-
-def threaded_poller(dev, device_manager, logger_name, config, datalogger, queue):
-    logging.info("Trying to connect to {}...".format(dev.mac_address))
-    try:
-        device = SolarDevice(mac_address=dev.mac_address, manager=device_manager,
-                             logger_name=logger_name, config=config,
-                             datalogger=datalogger, queue=queue)
-    except Exception as e:
-        logging.error(e)
-        return
-    device.connect()
-
-
 def main(argv=None):
     args = parse_args(argv)
     ini_file = args.ini or "solar-monitor.ini"
@@ -125,58 +103,84 @@ def main(argv=None):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=100)
     logger_future = executor.submit(run_logger, pipeline, datalogger, stop_event, liveness.record)
 
-    device_manager = SolarDeviceManager(adapter_name=config['monitor']['adapter'])
-    logging.info("Adapter status - Powered: {}".format(device_manager.is_adapter_powered))
-    if not device_manager.is_adapter_powered:
-        logging.info("Powering on the adapter ...")
-        device_manager.is_adapter_powered = True
-        logging.info("Powered on")
-
-    run_discovery(device_manager)
-
-    matched = 0
-    for dev in device_manager.devices():
-        logging.debug("Processing device {} {}".format(dev.mac_address, dev.alias()))
-        for section in config.sections():
-            if config.get(section, "mac", fallback=None) and config.get(section, "type", fallback=None):
-                mac = config.get(section, "mac").lower()
-                if dev.mac_address.lower() == mac:
-                    executor.submit(threaded_poller, dev, device_manager, section, config, datalogger, pipeline)
-                    liveness.expect(section)
-                    matched += 1
-                    logging.info("Waiting for device to connect")
-                    time.sleep(1)
-                    break
-
-    if matched == 0:
-        logging.error("No configured devices were discovered; exiting for restart.")
-        stop_event.set()
-        return 1
+    manager = ble.BleManager(adapter=config['monitor'].get('adapter') or None)
+    manager.start()
 
     def _handle_signal(signum, _frame):
         logging.info("Received signal %s; shutting down.", signum)
         stop_event.set()
-        device_manager.stop()
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    logging.debug("Waiting for devices to connect...")
-    time.sleep(10)
+    # All configured devices (section -> mac), whether or not discovered yet.
+    configured = {}
+    for section in config.sections():
+        mac = config.get(section, "mac", fallback=None)
+        dtype = config.get(section, "type", fallback=None)
+        if mac and dtype:
+            configured[section] = mac.lower()
 
-    loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
-    loop_thread.start()
+    # Mark every configured device offline until it actually connects, so HA
+    # shows its entities as Unavailable (not a stale last value) for anything
+    # that never resolves — e.g. a dead battery.
+    for section in configured:
+        datalogger.set_available(section, False)
+
+    devices = {}     # section -> SolarDevice
+
+    def _register(section, discovered):
+        if section in devices:
+            return False
+        mac = configured[section]
+        name = discovered.get(mac)
+        if name is None:
+            return False
+        try:
+            dev = SolarDevice(mac_address=mac, logger_name=section, config=config,
+                              datalogger=datalogger, queue=pipeline)
+        except Exception as e:
+            logging.error("Could not set up device [%s]: %s", section, e)
+            return False
+        dev.set_alias(name)
+        trusted = config.getboolean(section, 'trusted', fallback=bool(dev.need_polling))
+        manager.set_trusted(mac, trusted)
+        devices[section] = dev
+        liveness.expect(section)
+        datalogger.set_available(section, False)
+        manager.register(dev)
+        logging.info("Registered device [%s] %s (trusted=%s)", section, mac, trusted)
+        return True
+
+    discovered = manager.discover(timeout=DISCOVERY_MAX_WAIT)
+    logging.info("Discovered %d BLE devices", len(discovered))
+    for section in configured:
+        _register(section, discovered)
+
+    if not devices:
+        logging.error("No configured devices were discovered; exiting for restart.")
+        stop_event.set(); manager.stop()
+        return 1
+
+    def _late_discovery_loop():
+        while not stop_event.wait(REDISCOVER_INTERVAL):
+            missing = [s for s in configured if s not in devices]
+            if not missing:
+                continue
+            try:
+                found = manager.discover(timeout=DISCOVERY_WINDOW)
+            except Exception as e:
+                logging.debug("Late discovery failed: %s", e); continue
+            for section in missing:
+                _register(section, found)
+
+    threading.Thread(target=_late_discovery_loop, name="late-discovery", daemon=True).start()
+    threading.Thread(target=ble.command_bridge, name="mqtt-cmd-bridge",
+                     args=(datalogger, devices, manager, stop_event), daemon=True).start()
 
     logging.info("Supervising; terminate with Ctrl+C or SIGTERM")
-    exit_code = supervise(device_manager, logger_future, liveness, stop_event,
+    exit_code = supervise(_NullManager(), logger_future, liveness, stop_event,
                           check_interval=30.0, stale_timeout=600.0)
-
     stop_event.set()
-    device_manager.stop()
-    for dev in device_manager.devices():
-        try:
-            dev.disconnect()
-        except Exception as e:
-            logging.warning("Error disconnecting %s: %s", getattr(dev, "mac_address", "?"), e)
-
+    manager.stop()
     return exit_code
