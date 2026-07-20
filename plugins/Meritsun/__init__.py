@@ -57,6 +57,15 @@ class Util():
         self.PowerDevice = power_device
         self.end = 0
         self.prev_values = []
+        # A real full data frame carries this constant field (ASCII hex) at a fixed
+        # byte offset from the START_VAL marker. The pack also emits shorter status/
+        # other packet types (different layout) and the post-upgrade BlueZ stream
+        # duplicates fragments inside frames; both start with the same marker but
+        # decode to garbage. Requiring this signature at its fixed offset is what
+        # separates real data frames from the rest -- validated on both packs across
+        # charge and discharge with zero good frames lost.
+        self.DATA_SIGNATURE = b"0B008087"
+        self.DATA_SIGNATURE_OFFSET = 35
 
     def getValue(self, buf, start, end):
         try:
@@ -128,96 +137,99 @@ class Util():
 
     def notificationUpdate(self, data, char):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
-        logging.debug("broadcastUpdate Start {} {}".format(data, data.hex()))
         if self.PowerDevice.config.getboolean('monitor', 'debug', fallback=False):
             with open(f"/tmp/{self.PowerDevice.alias()}.log", 'a') as debugfile:
                 debugfile.write(f"{datetime.now()} <- {data.hex()}\n")
 
-        # logging.debug("broadcastUpdate Start {} {}".format(data, self.RevBuf))
-        # logging.debug("RevIndex {}".format(self.Revindex))
-        # logging.debug("SOI {}".format(self.SOI))
-        # logging.debug("RecvDataType start {}".format(self.Revindex))
-        cmdData = ""
-        if data != None and len(data):
-            i = 0
-            while i < len(data):
-                # logging.debug("Revindex {} {} Data: {}".format(i, self.Revindex, data[i]))
-                # logging.debug("RevBuf begin {}".format(self.RevBuf))
-                if self.Revindex > 121:
-                    # We have read more than 121 bytes, and don't care about the rest
-                    # logging.debug("Revindex  > 121 - parsing done")
-                    self.Revindex = 0
-                    self.end = 0
-                    self.RecvDataType = self.SOI
-
-                if self.RecvDataType == self.SOI:
-                    # 1. We start here, reading byte by byte until we get to the number 146 (hex 92)
-                    # Example: 30 30 30 35 39 35 0c 0c 0c 0c 0c 0c 0c 0c 92 37 37
-                    #                                                    ^^
-
-                    if data[i] == self.START_VAL:
-                        # When we find 146, we start filling the message buffer, and set a flag to read more data:
-                        self.RecvDataType = self.INFO
-                        self.RevBuf[self.Revindex] = data[i]
-                        self.Revindex = self.Revindex + 1
-                elif self.RecvDataType == self.INFO:
-                    # 2. The INFO-flag i set, lets continue to fill the buffer
-
-                    self.RevBuf[self.Revindex] = data[i]
-                    self.Revindex = self.Revindex + 1
-
-                    # The number 12 (hex 0C) marks the end of the message
-                    if data[i] == self.END_VAL:
-                        if self.end < 110:
-                            # Not sure why we need this...
-                            self.end = self.Revindex
-                        if self.Revindex == 121:
-                            # We have read 121 bytes and that marks the end of the buffer
-                            self.RecvDataType = self.EOI
-                elif self.RecvDataType == self.EOI:
-                    # 3. We should now have a buffer with 121 bytes,
-                    # starting with the first byte after value 146 (hex 92)
-
-                    # logging.debug("RecvDataType == 3 -> EOI")
-                    # logging.debug("Validate Checksum: {}".format(self.validateChecksum(self.RevBuf)))
-                    if self.validateChecksum(self.RevBuf):
-                        cmdData = self.RevBuf[1:self.Revindex]
-                        self.Revindex = 0
-                        self.end = 0
-                        self.RecvDataType = self.SOI
-                        return self.handleMessage(cmdData)
-                    self.Revindex = 0
-                    self.end = 0
-                    self.RecvDataType = self.SOI
-                i += 1
-        # logging.debug("broadcastUpdate End cmdData: {} RevBuf {}".format(cmdData, self.RevBuf))
-        return False
-
-
-
-
-
-
-    def handleMessage(self, message):
-        # Accepts a list of hex-characters, and returns the human readable values into the powerDevice object
-        # 2024-03-22 10:22:51,195 DEBUG   : handleMessage [56, 49, 51, 54, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 65, 48, 57, 65, 48, 49, 48, 48, 51, 53, 48, 48, 54, 52, 48, 48, 67, 56, 48, 65, 56, 48, 56, 56, 48, 55, 66, 54, 56, 50, 48, 69, 54, 50, 48, 68, 55, 53, 48, 68, 50, 56, 48, 68, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 54, 68, 56, 12, 12, 12, 12, 12, 12, 12, 12]
-
-        logging.debug("handleMessage {}".format(message))
-        if message == None or "" == message:
+        if not data:
             return False
-        if message != self.prev_values:
-            logging.debug("Response changed:")
-            logging.debug(f"- {self.prev_values}")
-            logging.debug(f"+ {message}:")
+
+        # The device streams several packet types back-to-back. A data packet
+        # starts with START_VAL (0x92); another packet type starts with 0xC9.
+        # Neither marker, nor the END_VAL (0x0C) padding, ever appears inside the
+        # ASCII-hex payload, so the markers delimit packets unambiguously. We
+        # accumulate the stream and re-sync on every marker, so a single lost or
+        # reframed notification can no longer desync the parser permanently the
+        # way the old fixed-121-byte logic did (which, after the trixie/BlueZ 5.82
+        # notification-framing change, gave up after the first frame). Unknown,
+        # short or corrupt packets are simply skipped.
+        if not hasattr(self, '_stream'):
+            self._stream = bytearray()
+        self._stream.extend(data)
+        # Bound the buffer so a marker-less run can't grow without limit.
+        if len(self._stream) > 512:
+            keep = max(self._stream.rfind(self.START_VAL), self._stream.rfind(0xC9))
+            self._stream = self._stream[keep:] if keep > 0 else self._stream[-256:]
+
+        updated = False
+        while True:
+            start = self._stream.find(self.START_VAL)
+            if start < 0:
+                # No data packet forming; drop the (unhandled) leading bytes.
+                self._stream.clear()
+                break
+            nxt = -1
+            for mark in (self.START_VAL, 0xC9):
+                p = self._stream.find(mark, start + 1)
+                if p >= 0 and (nxt < 0 or p < nxt):
+                    nxt = p
+            if nxt < 0:
+                # Packet not terminated yet (next marker unseen); keep it buffered.
+                if start > 0:
+                    del self._stream[:start]
+                break
+            packet = self._stream[start:nxt]   # START_VAL + payload + 0x0C padding
+            del self._stream[:nxt]             # consume; keep next marker as the new start
+            if self._handleDataPacket(packet):
+                updated = True
+        return updated
+
+    def _handleDataPacket(self, packet):
+        # packet[0] == START_VAL. Only real data frames carry DATA_SIGNATURE at its
+        # fixed offset; require it to reject the interleaved status/other packet
+        # types and mis-framed fragments (all of which decode to garbage). The
+        # scalar head stays intact even in fragment-bloated frames, so this is
+        # enough to trust the scalars; cells live further in and only survive in
+        # non-bloated frames, so gate them on length as well.
+        if packet.find(self.DATA_SIGNATURE) != self.DATA_SIGNATURE_OFFSET:
+            return False
+        end = packet.find(self.END_VAL)
+        if end < 0:
+            end = len(packet)
+        buf = [0] * 122
+        for k in range(min(len(packet), 122)):
+            buf[k] = packet[k]
+        self.RevBuf = buf
+        self.Revindex = min(len(packet), 121)
+        self.end = end
+        full_frame = len(packet) <= 130
+        return self.handleMessage(buf[1:self.Revindex], full=full_frame)
+
+
+
+
+
+
+    def handleMessage(self, message, full=True):
+        # Accepts a list of hex-characters, and returns the human readable values into the powerDevice object
+        logging.debug("handleMessage {}".format(message))
+        if not message or len(message) < 38:
+            return False
         self.prev_values = message
 
-        if len(message) < 38:
-            logging.info("len message < 38: {}".format(len(message)))
+        # A real pack always reports a nonzero pack voltage; a frame decoding it as
+        # 0 is not a data frame at all. (The DATA_SIGNATURE gate already rejects the
+        # other packet types; this is a cheap backstop.)
+        mvoltage = self.getValue(message, 0, 7)
+        if mvoltage < 1000:
             return False
 
         self.PowerDevice.entities.msg = message
-        # if self.DeviceType == '12V100Ah-027':
-        self.PowerDevice.entities.mvoltage = self.getValue(message, 0, 7)
+        # Scalar fields occupy the first 38 bytes of the frame. They sit at the
+        # head, before the region the duplicated fragments corrupt, so they are
+        # decoded on every framed packet; each entity setter validates its own
+        # value against physical bounds and rejects any that slipped through.
+        self.PowerDevice.entities.mvoltage = mvoltage
         mcurrent = self.getValue(message, 8, 15)
         if mcurrent > 2147483647:
             mcurrent = mcurrent - 4294967295
@@ -227,11 +239,25 @@ class Util():
         self.PowerDevice.entities.soc = self.getValue(message, 28, 31)
         self.PowerDevice.entities.temperature = self.getValue(message, 32, 35)
         self.PowerDevice.entities.status = self.getValue(message, 36, 37)
-        self.PowerDevice.entities.afestatus = self.getValue(message, 40, 41)
-        i = 0
-        while i < 16:
-            self.PowerDevice.entities.cell_mvoltage = (i + 1, self.getValue(message, (i * 4) + 44, (i * 4) + 47))
-            i = i + 1
+        # Per-cell voltages start past byte 40 -- exactly the region fragment
+        # duplication corrupts. Only trust them on non-bloated ("full") frames;
+        # a bloated frame's scalar head is fine but its cells are garbage.
+        if full:
+            self.PowerDevice.entities.afestatus = self.getValue(message, 40, 41)
+            # The frame carries up to 16 cell slots, but these packs have far fewer
+            # real cells; slots past the last real cell hold padding (0) or a
+            # different field. Stop at the first empty slot. Some frames also carry
+            # a corrupt low reading (~200 mV) in an otherwise-real cell slot -- a
+            # real cell is ~2.0-4.0 V, so skip anything outside a plausible cell
+            # range silently instead of letting the entity log it out-of-bounds.
+            i = 0
+            while i < 16:
+                cell_mv = self.getValue(message, (i * 4) + 44, (i * 4) + 47)
+                if cell_mv == 0:
+                    break
+                if 1000 <= cell_mv <= 5000:
+                    self.PowerDevice.entities.cell_mvoltage = (i + 1, cell_mv)
+                i = i + 1
 
         return True
 
