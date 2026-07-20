@@ -137,15 +137,30 @@ class SolarDevice(gatt.Device):
             # sys.exit(100)
 
     def set_trusted(self):
-        """Mark the device Trusted in BlueZ. A trusted device is not a
-        'temporary' device, so BlueZ keeps its object instead of removing it
-        ~30s after discovery stops (which otherwise makes a later connect fail
-        with 'Device does not exist'), and BlueZ will auto-reconnect it. gatt
-        does not expose this, so set the org.bluez.Device1 property directly.
-        The device must already be discovered (its BlueZ object must exist)."""
+        """Set the device's BlueZ Trusted property (per-device `trusted` config,
+        default True).
+
+        A trusted device is not 'temporary', so BlueZ keeps its object instead of
+        removing it ~30s after discovery stops (which otherwise makes a later
+        connect fail with 'Device does not exist'). BUT trusting also makes BlueZ
+        auto-reconnect the device transparently: if the link blips, BlueZ
+        re-establishes it without solar-monitor seeing a fresh services_resolved,
+        so StartNotify is never re-issued and a pure-notify device goes silent
+        after its first round while still showing Connected. For such devices set
+        `trusted = False` so gatt fully owns each connect->resolve->notify cycle.
+        gatt does not expose this, so set org.bluez.Device1 directly; the device
+        must already be discovered (its BlueZ object must exist).
+
+        Default: trust only devices we actively poll (need_polling). A poller
+        keeps re-issuing requests, so a transparent BlueZ auto-reconnect is
+        harmless for them; pure-notify devices are left untrusted. A per-device
+        `trusted` config option overrides the default either way."""
+        trusted = bool(self.need_polling)
+        if self.config:
+            trusted = self.config.getboolean(self.logger_name, 'trusted', fallback=trusted)
         try:
-            self._properties.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(True))
-            logging.info("[{}] Marked Trusted".format(self.logger_name))
+            self._properties.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(trusted))
+            logging.info("[{}] Set Trusted={}".format(self.logger_name, trusted))
             return True
         except Exception as e:
             logging.warning("[{}] Could not set Trusted: {}".format(self.logger_name, e))
