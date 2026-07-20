@@ -33,15 +33,14 @@ class DataLoggerMqtt():
         # other service on the host that connects as the hostname; MQTT brokers
         # evict the older client on a duplicate id, so the two keep kicking each
         # other off — endless reconnects, and command subscriptions torn down
-        # every time (switches stop working). clean_session=False keeps the
-        # broker-side session (subscriptions + queued QoS1 commands) across the
-        # unreliable link's brief disconnects.
+        # every time. on_connect re-subscribes all command topics after any
+        # reconnect, which keeps switches working over an unreliable link.
         client_id = "solar-monitor-{}".format(hostname)
         cb_api_version = getattr(paho, "CallbackAPIVersion", None)
         if cb_api_version is not None:                                     #  create client object on paho-mqtt>=2.x
-            self.client = paho.Client(paho.CallbackAPIVersion.VERSION1, client_id, clean_session=False)
+            self.client = paho.Client(paho.CallbackAPIVersion.VERSION1, client_id)
         else:                                                              #  create client object on older paho-mqtt
-            self.client = paho.Client(client_id, clean_session=False)
+            self.client = paho.Client(client_id)
 
         if username and password:
             self.client.username_pw_set(username=username,password=password)
@@ -243,22 +242,40 @@ class DataLoggerMqtt():
                 logging.error("MQTT re-subscribe failed for {}: {}".format(topic, e))
 
     def on_subscribe(self, client, userdata, mid, granted_qos):
-        # logging.debug("Subscribed to MQTT topic {}".format(userdata))
-        pass
+        # granted_qos of 128 (0x80) means the broker DENIED the subscription
+        # (usually an ACL) — the client would then silently never receive on
+        # that topic, which is exactly how a command/switch subscription fails.
+        try:
+            denied = [q for q in granted_qos if q is not None and q >= 128]
+        except TypeError:
+            denied = []
+        if denied:
+            logging.error("MQTT subscription DENIED by broker (mid=%s granted_qos=%s) — check broker ACL", mid, granted_qos)
+        else:
+            logging.info("MQTT subscribed ok (mid=%s granted_qos=%s)", mid, granted_qos)
 
 
     def on_message(self, client, userdata, message):
-        topic = message.topic
-        payload = message.payload.decode("utf-8")
-        logging.info("MQTT message received {}".format(str(message.payload.decode("utf-8"))))
-        logging.debug("MQTT message topic={}".format(message.topic))
-        logging.debug("MQTT message qos={}".format(message.qos))
-        logging.debug("MQTT message retain flag={}".format(message.retain))
-        (prefix, device, var, crap) = topic.split("/")
-        self.sets[device].append((var, payload))
-        logging.info("MQTT set: {}".format(self.sets))
-        if self.trigger[device]:
-            self.trigger[device].set()
+        # This runs on the paho network-loop thread. An unhandled exception here
+        # kills that thread and takes the whole MQTT client down (no more state
+        # published, no more commands received) until the process restarts — so
+        # everything is guarded, and a device we don't yet track is created on
+        # the fly rather than raising KeyError.
+        try:
+            topic = message.topic
+            payload = message.payload.decode("utf-8")
+            logging.info("MQTT command received on {}: {}".format(topic, payload))
+            parts = topic.split("/")
+            if len(parts) < 4:                 # expect {prefix}/{device}/{var}/set
+                return
+            device, var = parts[-3], parts[-2]
+            self.sets.setdefault(device, []).append((var, payload))
+            trigger = self.trigger.get(device)
+            if trigger is not None:
+                trigger.set()
+        except Exception as e:
+            logging.error("MQTT on_message failed for {}: {}".format(
+                getattr(message, "topic", "?"), e))
 
     def on_log(self, client, userdata, level, buf):
         logging.debug("MQTT {}".format(buf))
