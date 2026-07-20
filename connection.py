@@ -1,24 +1,16 @@
-"""Per-device BLE connection maintenance.
+"""Shared BLE connection-retry helpers.
 
 Root cause (found on real hardware): with multiple BLE devices, a link connects
 but often aborts during GATT service resolution; it is transient and succeeds on
-retry. The behaviour that actually works on the hardware is the *old* code's:
-connect every device concurrently (one thread each) straight after discovery,
-and let the transient aborts be ridden out by retrying — strict serialization
-made it worse, not better.
+retry. Exponential backoff (with jitter, so retries across devices don't all
+land at once) is the shared policy used for retrying failed connects.
 
-This module provides that: one `maintain_device` loop per device (run in its own
-thread, so connects happen concurrently), with exponential backoff between failed
-attempts. Trusting the device (done by the caller via SolarDevice.set_trusted)
-keeps BlueZ from removing it as a 'temporary' device after ~30s and lets BlueZ
-auto-reconnect it.
-
-It is gatt-free and unit-testable: the actual gatt connect is supplied as
-`connect_fn`.
+The thread-based connection loops that used to live here (`maintain_device`,
+`rotate_devices`, built on the abandoned `gatt` library) were replaced by the
+asyncio `maintain_device` in `ble.py` (bleak-based), which imports
+`backoff_seconds` from this module.
 """
-import logging
 import random
-import time
 
 _MAX_BACKOFF_EXP = 30   # clamp the exponent so backoff can't grow to a bigint
 
@@ -34,77 +26,3 @@ def backoff_seconds(attempt, base=10.0, maximum=300.0, jitter=5.0, rand=None):
     attempt = min(max(attempt, 1), _MAX_BACKOFF_EXP)
     delay = min(base * (2 ** (attempt - 1)), maximum)
     return max(delay + rand(-jitter, jitter), 0.0)
-
-
-def maintain_device(name, connect_fn, stop_event, base_backoff=10.0,
-                    max_backoff=300.0, jitter=5.0, rand=None, sleep=None):
-    """Keep one device connected until stop_event is set.
-
-    `connect_fn()` performs one full connect attempt and BLOCKS until the device
-    is no longer connected. It returns True if the device had connected (and has
-    since dropped) or False if the attempt never connected. After a good
-    connection we retry promptly; after a failed attempt we back off
-    exponentially so a device that is off/out of range is not hammered.
-
-    `sleep` defaults to `stop_event.wait` so backoff is interruptible on
-    shutdown; tests inject their own.
-    """
-    if sleep is None:
-        sleep = stop_event.wait
-    attempt = 0
-    while not stop_event.is_set():
-        try:
-            was_connected = connect_fn()
-        except Exception as e:
-            logging.error("[%s] connection loop error: %r", name, e)
-            was_connected = False
-        if stop_event.is_set():
-            break
-        if was_connected:
-            attempt = 0                      # had a good connection — retry promptly
-            continue
-        attempt += 1
-        delay = backoff_seconds(attempt, base_backoff, max_backoff, jitter, rand)
-        logging.info("[%s] connect failed; retrying in %.1fs", name, delay)
-        sleep(delay)
-
-
-def rotate_devices(names_fn, connect_fn_for, stop_event, gap=5.0, jitter=1.0,
-                   rand=None, sleep=None):
-    """Maintain one *rotating* device at a time, round-robin, until stop_event.
-
-    This is the fallback for controllers that genuinely cannot hold every device
-    connected at once: devices that don't get a permanent slot share a single
-    rotating one. A few persistent devices are held by `maintain_device`;
-    everything else is cycled through here — connect, hold long enough to read,
-    disconnect, next. (A healthy adapter can usually hold them all persistently;
-    see docs/BLUETOOTH.md — the common cause of apparent link limits is 2.4 GHz
-    WiFi/Bluetooth coexistence, not the controller itself.)
-
-    `names_fn()` returns the current rotating device names; it is re-read every
-    cycle so a device discovered after startup joins the rotation automatically.
-    For each name, `connect_fn_for(name)()` performs one full connect→hold→
-    disconnect and returns. A `gap` (with small jitter, to avoid the next
-    connect landing on the previous teardown) is waited between devices.
-
-    gatt-free and unit-testable: the gatt work lives in the injected callables.
-    """
-    if sleep is None:
-        sleep = stop_event.wait
-    if rand is None:
-        rand = random.uniform
-    served = 0
-    while not stop_event.is_set():
-        names = list(names_fn())
-        if not names:
-            sleep(gap)               # nothing to rotate yet — idle on the gap
-            continue
-        name = names[served % len(names)]
-        try:
-            connect_fn_for(name)()
-        except Exception as e:
-            logging.error("[rotate:%s] error: %r", name, e)
-        served += 1
-        if stop_event.is_set():
-            break
-        sleep(max(gap + rand(-jitter, jitter), 0.0))
