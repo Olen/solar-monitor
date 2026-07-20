@@ -30,7 +30,9 @@ file_name_format = '{year:04d}{month:02d}{day:02d}-'\
 
 # Define the default logging message formats.
 file_msg_format = '%(asctime)s %(levelname)-8s: %(message)s'
-console_msg_format = '%(levelname)s: %(message)s'
+# Include the timestamp on the console too — this is what `docker logs` captures,
+# and undated lines are impossible to correlate when debugging.
+console_msg_format = '%(asctime)s %(levelname)s: %(message)s'
 
 # Define the log rotation criteria.
 max_bytes=1024**2
