@@ -202,6 +202,15 @@ class SolarDevice(gatt.Device):
         self.run_connect = False
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
         logging.info("[{}] Resolved services".format(self.logger_name))
+        # Pass the BLE advertised alias to the datalogger so it can label this
+        # device's HA Device. Done here (before any data publishes) so the alias
+        # is present when the entities' discovery configs are first created.
+        if self.datalogger:
+            try:
+                self.datalogger.set_device_alias(self.logger_name, self.alias())
+                self.datalogger.set_available(self.logger_name, True)
+            except Exception as e:
+                logging.debug("[{}] Could not set device alias/availability: {}".format(self.logger_name, e))
         self.util = self.module.Util(self)
 
         device_notification_service = None

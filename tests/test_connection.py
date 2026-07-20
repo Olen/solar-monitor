@@ -92,3 +92,89 @@ def test_maintain_treats_connect_exception_as_failure():
     connection.maintain_device("reg", connect_fn, stop, base_backoff=5,
                                rand=NO_JITTER, sleep=fake_sleep)
     assert delays == [5]            # exception -> backoff, no crash
+
+
+# --- rotate_devices: the "rotating slot" of the hybrid poller ----------------
+
+def test_rotate_visits_devices_round_robin():
+    visited = []
+    stop = threading.Event()
+
+    def names_fn():
+        return ["a", "b", "c"]
+
+    def connect_fn_for(name):
+        def go():
+            visited.append(name)
+            if len(visited) >= 7:
+                stop.set()
+            return True
+        return go
+
+    connection.rotate_devices(names_fn, connect_fn_for, stop, gap=0,
+                              rand=NO_JITTER, sleep=lambda d: None)
+    assert visited == ["a", "b", "c", "a", "b", "c", "a"]
+
+
+def test_rotate_sleeps_gap_between_devices():
+    slept = []
+    stop = threading.Event()
+
+    def fake_sleep(d):
+        slept.append(d)
+        if len(slept) >= 3:
+            stop.set()
+
+    connection.rotate_devices(lambda: ["a", "b"], lambda n: (lambda: True),
+                              stop, gap=5, rand=NO_JITTER, sleep=fake_sleep)
+    assert slept == [5, 5, 5]       # a gap after each visited device
+
+
+def test_rotate_waits_when_no_devices_yet():
+    calls = {"n": 0}
+    slept = []
+    stop = threading.Event()
+
+    def connect_fn_for(name):
+        calls["n"] += 1
+        return lambda: True
+
+    def fake_sleep(d):
+        slept.append(d)
+        if len(slept) >= 3:
+            stop.set()
+
+    connection.rotate_devices(lambda: [], connect_fn_for, stop, gap=7,
+                              rand=NO_JITTER, sleep=fake_sleep)
+    assert calls["n"] == 0          # nothing to connect
+    assert slept == [7, 7, 7]       # just idles on the gap
+
+
+def test_rotate_continues_after_connect_exception():
+    visited = []
+    stop = threading.Event()
+
+    def connect_fn_for(name):
+        def go():
+            visited.append(name)
+            if name == "a" and visited.count("a") == 1:
+                raise RuntimeError("boom")     # first visit to a blows up
+            if len(visited) >= 4:
+                stop.set()
+            return True
+        return go
+
+    connection.rotate_devices(lambda: ["a", "b"], connect_fn_for, stop, gap=0,
+                              rand=NO_JITTER, sleep=lambda d: None)
+    assert visited == ["a", "b", "a", "b"]     # exception didn't stop rotation
+
+
+def test_rotate_stops_on_event_without_connecting():
+    stop = threading.Event()
+    stop.set()
+
+    def connect_fn_for(name):
+        raise AssertionError("connect_fn_for must not be called after stop")
+
+    connection.rotate_devices(lambda: ["a"], connect_fn_for, stop,
+                              sleep=lambda d: None)

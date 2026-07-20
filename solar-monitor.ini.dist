@@ -6,6 +6,25 @@ reconnect = False
 # C = Celsius
 # K = Kelvin
 # F = Farenheit
+#
+# BLE connection model. Normally EVERY device should be held connected
+# continuously (`persistent = True` in each device's section below) — a healthy
+# adapter easily holds all of them, and pure-notify devices (which never answer
+# polls, they only push notifications) MUST stay connected to deliver any data.
+#
+# If your controller genuinely cannot hold that many links at once, mark only
+# the must-have-real-time devices persistent and leave the rest as "rotating":
+# rotating devices share ONE connection slot — connect, read for `rotate_dwell`
+# seconds, disconnect, move to the next. Note rotation is a poor fit for
+# pure-notify devices, which may not push data within a short dwell.
+#
+#   rotate_dwell = 30    # seconds to hold each rotating device while reading
+#   rotate_gap = 5       # seconds to wait between rotating devices
+#
+# IMPORTANT (Raspberry Pi and other WiFi/BT combo chips): a 2.4 GHz WiFi AP on
+# the same chip starves Bluetooth and makes connections fail with
+# le-connection-abort-by-local. Run the AP on 5 GHz (or a separate radio) so
+# 2.4 GHz is free for BLE. See docs/BLUETOOTH.md.
 
 
 [renogy_battery_1]
@@ -17,21 +36,26 @@ reconnect = True
 type = Meritsun
 mac = 11:11:11:11:11:11
 reconnect = False
+persistent = True
 
 [battery_2]
 type = Meritsun
 mac = 11:11:11:11:11:11
 reconnect = False
+persistent = True
 
 [regulator]
 type = SolarLink
 mac = 11:11:11:11:11:11
 reconnect = False
+# Hold every device connected continuously (recommended). See [monitor] above.
+persistent = True
 
 [inverter_1]
 type = VEDirect
 mac = 11:11:11:11:11:11
 reconnect = False
+persistent = True
 
 [rectifier_1]
 type = VEDirect

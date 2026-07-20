@@ -67,3 +67,44 @@ def maintain_device(name, connect_fn, stop_event, base_backoff=10.0,
         delay = backoff_seconds(attempt, base_backoff, max_backoff, jitter, rand)
         logging.info("[%s] connect failed; retrying in %.1fs", name, delay)
         sleep(delay)
+
+
+def rotate_devices(names_fn, connect_fn_for, stop_event, gap=5.0, jitter=1.0,
+                   rand=None, sleep=None):
+    """Maintain one *rotating* device at a time, round-robin, until stop_event.
+
+    This is the fallback for controllers that genuinely cannot hold every device
+    connected at once: devices that don't get a permanent slot share a single
+    rotating one. A few persistent devices are held by `maintain_device`;
+    everything else is cycled through here — connect, hold long enough to read,
+    disconnect, next. (A healthy adapter can usually hold them all persistently;
+    see docs/BLUETOOTH.md — the common cause of apparent link limits is 2.4 GHz
+    WiFi/Bluetooth coexistence, not the controller itself.)
+
+    `names_fn()` returns the current rotating device names; it is re-read every
+    cycle so a device discovered after startup joins the rotation automatically.
+    For each name, `connect_fn_for(name)()` performs one full connect→hold→
+    disconnect and returns. A `gap` (with small jitter, to avoid the next
+    connect landing on the previous teardown) is waited between devices.
+
+    gatt-free and unit-testable: the gatt work lives in the injected callables.
+    """
+    if sleep is None:
+        sleep = stop_event.wait
+    if rand is None:
+        rand = random.uniform
+    served = 0
+    while not stop_event.is_set():
+        names = list(names_fn())
+        if not names:
+            sleep(gap)               # nothing to rotate yet — idle on the gap
+            continue
+        name = names[served % len(names)]
+        try:
+            connect_fn_for(name)()
+        except Exception as e:
+            logging.error("[rotate:%s] error: %r", name, e)
+        served += 1
+        if stop_event.is_set():
+            break
+        sleep(max(gap + rand(-jitter, jitter), 0.0))

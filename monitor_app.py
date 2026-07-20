@@ -18,14 +18,26 @@ from solardevice import SolarDeviceManager, SolarDevice
 from datalogger import DataLogger
 import duallog
 from supervisor import run_logger, LivenessTracker, supervise
-from connection import maintain_device
+from connection import maintain_device, rotate_devices
 
 DISCOVERY_WINDOW = 5     # stop discovery after this many seconds with no new devices
 DISCOVERY_MAX_WAIT = 15  # hard cap on discovery duration (seconds)
-CONNECT_TIMEOUT = 40.0   # per-attempt wait for a device to resolve services
+CONNECT_TIMEOUT = 40.0   # per-attempt wait for a persistent device to resolve services
 CONNECT_STAGGER = 1.0    # delay between starting each device's connect (like the old code)
 HOLD_POLL = 5.0          # while connected, how often to check the device is still up
 REDISCOVER_INTERVAL = 120.0  # how often to re-scan for configured devices that appear after startup
+
+# Hybrid poller (fallback for constrained controllers): devices flagged
+# `persistent` in the ini each keep a permanent slot (maintain_device); any
+# non-persistent devices share ONE rotating slot (rotate_devices) — connect,
+# hold to read, disconnect, next. A healthy adapter can hold every device
+# persistently; see docs/BLUETOOTH.md (the usual cause of apparent link limits
+# is 2.4 GHz WiFi/Bluetooth coexistence, not the controller).
+ROTATE_DWELL = 30.0            # seconds to hold each rotating device to collect readings
+ROTATE_GAP = 5.0              # settle time between rotating devices (lets teardown finish)
+ROTATE_CONNECT_TIMEOUT = 25.0  # per-attempt resolve wait for a rotating device (shorter so a
+                               # dead device doesn't stall the whole rotation)
+DISCONNECT_TIMEOUT = 5.0       # wait for a device's teardown to finish before the next connect
 
 
 class ConfigError(Exception):
@@ -136,6 +148,24 @@ def main(argv=None):
             configured[section] = mac.lower()
     devices = {}   # section -> SolarDevice, once registered
 
+    # Hybrid poller wiring: which devices get a permanent slot vs. the shared
+    # rotating one. Devices marked `persistent = True` in the ini are held open
+    # continuously; the rest are cycled through a single rotating slot so we
+    # never exceed the controller's ~2 concurrent-link ceiling.
+    persistent = {s for s in configured if config.getboolean(s, 'persistent', fallback=False)}
+    rotate_dwell = config.getfloat('monitor', 'rotate_dwell', fallback=ROTATE_DWELL)
+    rotate_gap = config.getfloat('monitor', 'rotate_gap', fallback=ROTATE_GAP)
+    logging.info("Persistent devices: %s; rotating: %s",
+                 ", ".join(sorted(persistent)) or "(none)",
+                 ", ".join(sorted(s for s in configured if s not in persistent)) or "(none)")
+
+    # Mark every configured device offline until it actually connects, so HA
+    # shows its entities as Unavailable (not a stale last value) for anything
+    # that never resolves — e.g. a dead battery. services_resolved flips a
+    # device to online once it is up.
+    for section in configured:
+        datalogger.set_available(section, False)
+
     def _handle_signal(signum, _frame):
         logging.info("Received signal %s; shutting down.", signum)
         stop_event.set()
@@ -149,6 +179,15 @@ def main(argv=None):
     loop_thread = threading.Thread(target=device_manager.run, name="gatt-mainloop", daemon=True)
     loop_thread.start()
 
+    # Serialize the *establishment* of connections. The controller allows only
+    # one LE "Create Connection" in flight at a time: if two threads call
+    # connect() at once (e.g. the persistent regulator and the rotating slot),
+    # BlueZ cancels one and both fail with le-connection-abort-by-local. So only
+    # one device may be in the connect->resolve window at a time. The lock is
+    # held only during establishment, then released — several *resolved* links
+    # can still be held concurrently (up to the controller's ~2-link ceiling).
+    connect_lock = threading.Lock()
+
     def _make_connect_fn(device):
         """One connect attempt for maintain_device: connect, and if it resolves,
         hold until it drops. Returns True if it had connected (and has now
@@ -156,13 +195,16 @@ def main(argv=None):
         def connect_once():
             device._connect_ok = False
             device._connect_event.clear()
-            logging.info("[%s] Connecting to %s", device.logger_name, device.mac_address)
-            try:
-                device.connect()
-            except Exception as e:
-                logging.error("[%s] connect() raised: %s", device.logger_name, e)
-                return False
-            if not (device._connect_event.wait(CONNECT_TIMEOUT) and device._connect_ok):
+            established = False
+            with connect_lock:                  # serialize establishment
+                logging.info("[%s] Connecting to %s", device.logger_name, device.mac_address)
+                try:
+                    device.connect()
+                    established = (device._connect_event.wait(CONNECT_TIMEOUT)
+                                  and device._connect_ok)
+                except Exception as e:
+                    logging.error("[%s] connect() raised: %s", device.logger_name, e)
+            if not established:
                 return False
             # Connected and resolved — hold the connection until it drops.
             device._disconnect_event.clear()
@@ -172,9 +214,52 @@ def main(argv=None):
             return True
         return connect_once
 
+    def _safe_disconnect(device):
+        try:
+            device.disconnect()
+        except Exception as e:
+            logging.debug("[%s] disconnect error: %s", device.logger_name, e)
+
+    def _make_rotating_connect_fn(device):
+        """One rotating-slot cycle: connect, hold for a dwell window so the
+        poller collects readings, then disconnect and wait for teardown so the
+        next device connects into a free slot. Always releases the slot."""
+        def connect_once():
+            device._connect_ok = False
+            device._connect_event.clear()
+            device._disconnect_event.clear()
+            resolved = False
+            with connect_lock:                  # serialize establishment
+                logging.info("[%s] Connecting (rotating slot) to %s",
+                             device.logger_name, device.mac_address)
+                try:
+                    device.connect()
+                    resolved = (device._connect_event.wait(ROTATE_CONNECT_TIMEOUT)
+                                and device._connect_ok)
+                except Exception as e:
+                    logging.error("[%s] connect() raised: %s", device.logger_name, e)
+            if resolved and not stop_event.is_set():
+                stop_event.wait(rotate_dwell)   # hold the slot; poller reads here
+            # Free the slot for the next device, whether or not it resolved.
+            _safe_disconnect(device)
+            device._disconnect_event.wait(DISCONNECT_TIMEOUT)
+            return resolved
+        return connect_once
+
+    def _rotating_connect_for(name):
+        device = devices.get(name)
+        if device is None:
+            return lambda: False
+        return _make_rotating_connect_fn(device)
+
+    def _rotating_names():
+        return [s for s in devices if s not in persistent]
+
     def _register(section):
-        """Create + trust a SolarDevice for a discovered configured section and
-        start its maintenance thread. Returns True if newly registered."""
+        """Create + trust a SolarDevice for a discovered configured section.
+        A persistent device gets its own maintenance thread; a rotating device
+        is just added to `devices` — the single rotation thread picks it up.
+        Returns True if newly registered."""
         if section in devices:
             return False
         mac = configured[section]
@@ -193,15 +278,18 @@ def main(argv=None):
         device.set_trusted()
         devices[section] = device
         liveness.expect(section)
-        threading.Thread(target=maintain_device,
-                         args=(section, _make_connect_fn(device), stop_event),
-                         name="connect-%s" % section, daemon=True).start()
-        logging.info("Registered device [%s] %s", section, mac)
+        if section in persistent:
+            threading.Thread(target=maintain_device,
+                             args=(section, _make_connect_fn(device), stop_event),
+                             name="connect-%s" % section, daemon=True).start()
+            logging.info("Registered persistent device [%s] %s", section, mac)
+        else:
+            logging.info("Registered rotating device [%s] %s", section, mac)
         return True
 
-    # Start each discovered device's connect concurrently, staggered like the old
-    # code — that is what the hardware actually connects reliably; strict
-    # serialization was worse.
+    # Start each discovered device's connect, staggered. Persistent devices each
+    # spin up a maintenance thread here; rotating devices are handled by the
+    # single rotation thread started below.
     for section in configured:
         if _register(section):
             time.sleep(CONNECT_STAGGER)
@@ -210,6 +298,13 @@ def main(argv=None):
         logging.error("No configured devices were discovered; exiting for restart.")
         stop_event.set()
         return 1
+
+    # One rotation thread services every non-persistent device through a single
+    # shared slot, so total concurrent links stay within the controller's limit.
+    threading.Thread(target=rotate_devices,
+                     args=(_rotating_names, _rotating_connect_for, stop_event),
+                     kwargs={"gap": rotate_gap},
+                     name="rotate", daemon=True).start()
 
     def _late_discovery_loop():
         """Occasionally re-scan for configured devices that started advertising
@@ -222,10 +317,13 @@ def main(argv=None):
             if not missing:
                 continue
             logging.info("Re-discovering for late devices: %s", ", ".join(sorted(missing)))
+            # Hold connect_lock: a scan running while a connect is being
+            # established collides on the radio and aborts it (abort-by-local).
             try:
-                device_manager.start_discovery()
-                stop_event.wait(DISCOVERY_WINDOW)
-                device_manager.stop_discovery()
+                with connect_lock:
+                    device_manager.start_discovery()
+                    stop_event.wait(DISCOVERY_WINDOW)
+                    device_manager.stop_discovery()
             except Exception as e:
                 logging.debug("Late discovery scan failed: %s", e)
             for section in missing:
