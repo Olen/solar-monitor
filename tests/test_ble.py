@@ -170,3 +170,43 @@ def test_meritsun_decode_real_frame_sets_voltage():
     assert dev.util.handleMessage(msg) is True
     assert dev.entities.mvoltage == 13953
     assert dev.entities.voltage == 14.0   # round(13953/1000, 1)
+
+
+def test_manager_registers_and_runs_a_device_task(monkeypatch):
+    import ble
+    mgr = ble.BleManager(adapter=None)
+    made = {}
+
+    def fake_factory(mac):
+        c = FakeClient(mac, drop_after_polls=1)
+        made[mac] = c
+        return c
+
+    monkeypatch.setattr(mgr, "_client_factory", fake_factory)
+    dev = FakeDev(need_polling=True)
+    mgr.start()
+    try:
+        mgr.register(dev)
+        # give the loop time to connect+subscribe
+        import time; time.sleep(0.2)
+        assert made[dev.mac_address].notified_uuid == "ffe4"
+    finally:
+        mgr.stop()
+
+
+def test_submit_command_invokes_run_command_on_loop():
+    import ble, time
+    mgr = ble.BleManager(adapter=None)
+    called = []
+
+    class Dev(FakeDev):
+        def run_command(self, var, value):
+            called.append((var, value))
+
+    mgr.start()
+    try:
+        mgr.submit_command(Dev(), "power_switch", "1")
+        time.sleep(0.1)
+        assert called == [("power_switch", "1")]
+    finally:
+        mgr.stop()
