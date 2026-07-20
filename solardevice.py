@@ -29,6 +29,7 @@ class SolarDevice:
         self.need_polling = None
         self.send_ack = None
         self.notify_uuid = None
+        self.notify_uuids = []
         self.device_write_characteristic_polling = None
         self.device_write_characteristic_commands = None
         self.entities = None
@@ -53,11 +54,17 @@ class SolarDevice:
         self.device_id = getattr(self.module.Config, "DEVICE_ID", None)
         self.need_polling = bool(getattr(self.module.Config, "NEED_POLLING", None))
         self.send_ack = getattr(self.module.Config, "SEND_ACK", None)
-        # char_notify may be a str or a container of UUIDs; pick the first.
+        # char_notify may be a str or a container of UUIDs. Some devices (e.g.
+        # VEDirect) stream their data across several notify characteristics and
+        # need EVERY one subscribed, so keep the full list; notify_uuid stays as
+        # the first for single-characteristic callers.
         if isinstance(self.char_notify, (list, tuple, set)):
-            self.notify_uuid = next(iter(self.char_notify), None)
+            self.notify_uuids = [u for u in self.char_notify if u]
+        elif self.char_notify:
+            self.notify_uuids = [self.char_notify]
         else:
-            self.notify_uuid = self.char_notify
+            self.notify_uuids = []
+        self.notify_uuid = self.notify_uuids[0] if self.notify_uuids else None
         # write chars are plain UUID strings for bleak.write_gatt_char
         self.device_write_characteristic_polling = self.char_write_polling
         self.device_write_characteristic_commands = self.char_write_commands

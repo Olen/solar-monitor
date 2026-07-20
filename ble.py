@@ -46,8 +46,14 @@ async def maintain_device(dev, connect_lock, client_factory, stop_event,
                 logging.info("[%s] Connecting to %s", dev.logger_name, dev.mac_address)
                 await client.connect()
                 dev.on_connected(client)
-                if dev.notify_uuid:
-                    await client.start_notify(dev.notify_uuid, dev.notify_callback)
+                # Subscribe to EVERY notify characteristic the device exposes;
+                # some devices (VEDirect) stream data across several and go silent
+                # (and drop the link) if any is left unsubscribed.
+                notify_uuids = getattr(dev, "notify_uuids", None)
+                if not notify_uuids and dev.notify_uuid:
+                    notify_uuids = [dev.notify_uuid]
+                for uuid in (notify_uuids or []):
+                    await client.start_notify(uuid, dev.notify_callback)
                 connected = True
             await _hold(dev, client, stop_event, poll_interval, sleep)
         except Exception as e:
