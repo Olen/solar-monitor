@@ -1,96 +1,42 @@
 #!/usr/bin/env python3
 
 from __future__ import absolute_import
-import threading
+import asyncio
 
-from argparse import ArgumentParser
-import configparser
-import time
-import os
-import sys
-import gatt
-import time
-from datetime import datetime
-import dbus
-from dbus.exceptions import DBusException
-
-# import duallog
 import logging
 
 from supervisor import try_put
 
-# duallog.setup('SmartPower', minLevel=logging.INFO)
 
-# from datalogger import DataLogger
-
-
-
-# implementation of blegatt.DeviceManager, discovers any GATT device
-class SolarDeviceManager(gatt.DeviceManager):
-
-    def device_discovered(self, device):
-        logging.info("[{}] Discovered, alias = {}".format(device.mac_address, device.alias()))
-        # NB: do NOT stop_discovery() here. It used to stop after the first device,
-        # which crippled scanning — the connection loop needs full discovery windows
-        # to keep BlueZ's device cache fresh. The loop starts/stops discovery itself.
-
-    def make_device(self, mac_address):
-        # if mac_address not in self._devices:
-        logging.info("[{}] Making device from mac".format(mac_address))
-        return SolarDevice(mac_address=mac_address, manager=self)
-        # logging.warning("[{}] Already managed".format(mac_address))
-        # return None
-
-
-
-# implementation of blegatt.Device, connects to selected GATT device
-class SolarDevice(gatt.Device):
-    def __init__(self, mac_address, manager, logger_name = 'unknown', reconnect = False, type=None, datalogger=None, queue=None, config=None):
-        super().__init__(mac_address=mac_address, manager=manager)
-        self.reader_activity = None
+# Transport-free, decoding-only device object. Driven by ble.py's
+# maintain_device (bleak/asyncio) — see docs/superpowers/plans/2026-07-20-bleak-migration.md.
+class SolarDevice:
+    def __init__(self, mac_address, logger_name='unknown', type=None,
+                 datalogger=None, queue=None, config=None):
+        self.mac_address = mac_address
         self.logger_name = logger_name
-        self.service_notify = None
-        self.service_write = None
-        self.char_notify = None
-        self.char_write = None
-        self.device_id = None
-        self.send_ack = None
-        self.need_polling = None
-        self.util = None
-        self.type = None
-        self.module = None
-        self.device_write_characteristic_polling = None
-        self.device_write_characteristic_commands = None
         self.datalogger = datalogger
         self.queue = queue
-        self._dropped = 0
-        # Connection coordination (see connection.py): the gatt callbacks set
-        # these; the connection loop's connect_fn awaits _connect_event.
-        self._connect_event = threading.Event()
-        self._connect_ok = False
-        self._resolved = False
-        # Set by disconnect_succeeded so a failed attempt can wait for the device
-        # to fully tear down before the next attempt (no late callbacks bleeding
-        # across attempts).
-        self._disconnect_event = threading.Event()
-        self.on_disconnect = None
-        self.run_device_poller = False
-        self.poller_thread = None
-        self.run_command_poller = False
-        self.command_thread = None
-        self.run_connect = False
-        self.connect_thread = None
-        self.command_trigger = None
-        # self.sleeper = threading.Event()
         self.config = config
-        if config:
-            self.auto_reconnect = config.getboolean('monitor', 'reconnect', fallback=False)
-            self.type = config.get(logger_name, 'type', fallback=None)
-        self.writing = False
+        self._client = None
+        self._alias = logger_name
+        self._dropped = 0
+        # plugin-derived, filled below
+        self.module = None
+        self.util = None
+        self.type = None
+        self.device_id = None
+        self.need_polling = None
+        self.send_ack = None
+        self.notify_uuid = None
+        self.device_write_characteristic_polling = None
+        self.device_write_characteristic_commands = None
+        self.entities = None
 
+        if config:
+            self.type = config.get(logger_name, 'type', fallback=None)
         if not self.type:
             return
-
         try:
             mod = __import__("plugins." + self.type)
             self.module = getattr(mod, self.type)
@@ -105,184 +51,70 @@ class SolarDevice(gatt.Device):
         self.char_write_polling = getattr(self.module.Config, "WRITE_CHAR_UUID_POLLING", None)
         self.char_write_commands = getattr(self.module.Config, "WRITE_CHAR_UUID_COMMANDS", None)
         self.device_id = getattr(self.module.Config, "DEVICE_ID", None)
-        self.need_polling = getattr(self.module.Config, "NEED_POLLING", None)
+        self.need_polling = bool(getattr(self.module.Config, "NEED_POLLING", None))
         self.send_ack = getattr(self.module.Config, "SEND_ACK", None)
+        # char_notify may be a str or a container of UUIDs; pick the first.
+        if isinstance(self.char_notify, (list, tuple, set)):
+            self.notify_uuid = next(iter(self.char_notify), None)
+        else:
+            self.notify_uuid = self.char_notify
+        # write chars are plain UUID strings for bleak.write_gatt_char
+        self.device_write_characteristic_polling = self.char_write_polling
+        self.device_write_characteristic_commands = self.char_write_commands
 
-        if "battery" in self.logger_name:
+        if "battery" in logger_name:
             self.entities = BatteryDevice(parent=self)
-        elif "regulator" in self.logger_name:
+        elif "regulator" in logger_name:
             self.entities = RegulatorDevice(parent=self)
-        elif "inverter" in self.logger_name:
+        elif "inverter" in logger_name:
             self.entities = InverterDevice(parent=self)
-        elif "rectifier" in self.logger_name:
+        elif "rectifier" in logger_name:
             self.entities = RectifierDevice(parent=self)
         else:
             self.entities = PowerDevice(parent=self)
-
-
+        self.util = self.module.Util(self)
 
     def alias(self):
-        alias = super().alias()
-        if alias:
-            return alias.strip()
-        return None
+        return self._alias
 
-    def connect(self):
-        logging.info("[{}] Connecting to {}".format(self.logger_name, self.mac_address))
-        try:
-            super().connect()
-        except DBusException as e:
-            logging.error("[{}] DBUS-error: {}".format(self.logger_name, e))
-            self._signal_connect_result(False)
-            # sys.exit(100)
+    def set_alias(self, name):
+        if name:
+            self._alias = name.strip()
 
-    def set_trusted(self):
-        """Set the device's BlueZ Trusted property (per-device `trusted` config,
-        default True).
-
-        A trusted device is not 'temporary', so BlueZ keeps its object instead of
-        removing it ~30s after discovery stops (which otherwise makes a later
-        connect fail with 'Device does not exist'). BUT trusting also makes BlueZ
-        auto-reconnect the device transparently: if the link blips, BlueZ
-        re-establishes it without solar-monitor seeing a fresh services_resolved,
-        so StartNotify is never re-issued and a pure-notify device goes silent
-        after its first round while still showing Connected. For such devices set
-        `trusted = False` so gatt fully owns each connect->resolve->notify cycle.
-        gatt does not expose this, so set org.bluez.Device1 directly; the device
-        must already be discovered (its BlueZ object must exist).
-
-        Default: trust only devices we actively poll (need_polling). A poller
-        keeps re-issuing requests, so a transparent BlueZ auto-reconnect is
-        harmless for them; pure-notify devices are left untrusted. A per-device
-        `trusted` config option overrides the default either way."""
-        trusted = bool(self.need_polling)
-        if self.config:
-            trusted = self.config.getboolean(self.logger_name, 'trusted', fallback=trusted)
-        try:
-            self._properties.Set('org.bluez.Device1', 'Trusted', dbus.Boolean(trusted))
-            logging.info("[{}] Set Trusted={}".format(self.logger_name, trusted))
-            return True
-        except Exception as e:
-            logging.warning("[{}] Could not set Trusted: {}".format(self.logger_name, e))
-            return False
-
-    def _signal_connect_result(self, ok):
-        """Report a connect attempt's outcome to the waiting connection loop
-        (connection.py). Retry/backoff is the coordinator's job, not the
-        device's — so this never schedules its own reconnect."""
-        self._connect_ok = ok
-        self._connect_event.set()
-
-    def connect_succeeded(self):
-        super().connect_succeeded()
+    def on_connected(self, client):
+        self._client = client
         logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
-
-    def connect_failed(self, error):
-        super().connect_failed(error)
-        logging.error("[{}] Connection failed: {}".format(self.logger_name, str(error)))
-        if self.poller_thread:
-            self.run_device_poller = False
-            logging.info("[{}] Stopping poller-thread".format(self.logger_name))
-        if self.command_thread:
-            logging.info("[{}] Stopping command-thread".format(self.logger_name))
-            self.run_command_poller = False
-            self.command_trigger.set()
-            self.command_trigger.clear()
-        self._resolved = False
-        self._signal_connect_result(False)
-
-
-    def disconnect_succeeded(self):
-        super().disconnect_succeeded()
-        logging.error("[{}] Disconnected".format(self.logger_name))
-        if self.poller_thread:
-            self.run_device_poller = False
-            logging.info("[{}] Stopping poller-thread".format(self.logger_name))
-        if self.command_thread:
-            logging.info("[{}] Stopping command-thread".format(self.logger_name))
-            self.run_command_poller = False
-            self.command_trigger.set()
-            self.command_trigger.clear()
-        was_resolved = self._resolved
-        self._resolved = False
-        self._signal_connect_result(False)
-        self._disconnect_event.set()   # let a draining connect_fn know teardown is done
-        # Only a *live* connection dropping needs re-queueing; a failed connect
-        # attempt is already handled by the connection loop that awaited it.
-        if was_resolved and self.on_disconnect:
-            self.on_disconnect()
-
-    def services_resolved(self):
-        super().services_resolved()
-        self.run_connect = False
-        logging.info("[{}] Connected to {}".format(self.logger_name, self.alias()))
-        logging.info("[{}] Resolved services".format(self.logger_name))
-        # Pass the BLE advertised alias to the datalogger so it can label this
-        # device's HA Device. Done here (before any data publishes) so the alias
-        # is present when the entities' discovery configs are first created.
         if self.datalogger:
             try:
                 self.datalogger.set_device_alias(self.logger_name, self.alias())
                 self.datalogger.set_available(self.logger_name, True)
             except Exception as e:
-                logging.debug("[{}] Could not set device alias/availability: {}".format(self.logger_name, e))
-        self.util = self.module.Util(self)
+                logging.debug("[{}] alias/availability: {}".format(self.logger_name, e))
 
-        device_notification_service = None
-        device_write_service = None
-        for service in self.services:
-            logging.info("[{}]  Service [{}]".format(self.logger_name, service.uuid))
-            if self.service_notify and service.uuid == self.service_notify:
-                logging.info("[{}]  - Found dev notify service [{}]".format(self.logger_name, service.uuid))
-                device_notification_service = service
-            if self.service_write and service.uuid == self.service_write:
-                logging.info("[{}]  - Found dev write service [{}]".format(self.logger_name, service.uuid))
-                device_write_service = service
-            for characteristic in service.characteristics:
-                logging.info("[{}]    Characteristic [{}]".format(self.logger_name, characteristic.uuid))
+    def on_disconnected(self):
+        if self.datalogger:
+            try:
+                self.datalogger.set_available(self.logger_name, False)
+            except Exception:
+                pass
+        self._client = None
 
+    def notify_callback(self, characteristic, data):
+        try:
+            self.on_notification(str(getattr(characteristic, "uuid", characteristic)), bytes(data))
+        except Exception as e:
+            logging.error("[{}] notify handler error: {}".format(self.logger_name, e))
 
-        if device_notification_service:
-            for c in device_notification_service.characteristics:
-                if self.char_notify and c.uuid in self.char_notify:
-                    logging.info("[{}]    - Found dev notify char [{}]".format(self.logger_name, c.uuid))
-                    logging.info("[{}]    + Subscribing to notify char [{}]".format(self.logger_name, c.uuid))
-                    c.enable_notifications()
-        if device_write_service:
-            for c in device_write_service.characteristics:
-                if self.char_write_polling and c.uuid == self.char_write_polling:
-                    logging.info("[{}]    - Found dev write polling char [{}]".format(self.logger_name, c.uuid))
-                    self.device_write_characteristic_polling = c
-                if self.char_write_commands and c.uuid == self.char_write_commands:
-                    logging.info("[{}]    - Found dev write polling char [{}]".format(self.logger_name, c.uuid))
-                    self.device_write_characteristic_commands = c
+    def get_poll_data(self):
+        return self.util.pollRequest() if self.util else None
 
-
-        if self.need_polling:
-            self.poller_thread = threading.Thread(target=self.device_poller)
-            self.poller_thread.daemon = True
-            self.poller_thread.name = "Device-poller-thread {}".format(self.logger_name)
-            self.poller_thread.start()
-
-        # We only need an MQTT-poller thread if we have a write characteristic to send data to and MQTT is set up
-        if self.char_write_commands and self.datalogger.mqtt is not None:
-            self.command_trigger = threading.Event()
-            self.datalogger.mqtt.trigger[self.logger_name] = self.command_trigger
-            self.command_thread = threading.Thread(target=self.mqtt_poller, args=(self.command_trigger,))
-            self.command_thread.daemon = True
-            self.command_thread.name = "MQTT-poller-thread {}".format(self.logger_name)
-            self.command_thread.start()
-
-        # Fully connected and usable — tell the waiting connection loop it succeeded.
-        self._resolved = True
-        self._signal_connect_result(True)
-
-
-
+    def run_command(self, var, message):
+        for data in self.util.cmdRequest(var, message):
+            self.characteristic_write_value(data, self.device_write_characteristic_commands)
 
     def _enqueue(self, item):
         """Non-blocking enqueue. Dropping a sample is always better than
-        blocking the dbus main-loop thread inside a gatt callback."""
+        blocking the asyncio loop thread inside a notification callback."""
         if not try_put(self.queue, item):
             self._dropped += 1
             if self._dropped % 100 == 1:
@@ -292,18 +124,12 @@ class SolarDevice(gatt.Device):
                     )
                 )
 
-    def characteristic_value_updated(self, characteristic, value):
-        super().characteristic_value_updated(characteristic, value)
-
-        # logging.debug("[{}] [{}] Received update".format(self.logger_name, threading.currentThread().name))
-        # logging.debug("[{}]  characteristic id {} value: {}".format(self.logger_name, characteristic.uuid, value))
-        # logging.debug("[{}]  retCmdData value: {}".format(self.logger_name, retCmdData))
-
+    def on_notification(self, uuid, value):
         if self.send_ack:
             data = self.util.ackData(value)
             self.characteristic_write_value(data, self.device_write_characteristic_polling)
 
-        if self.util.notificationUpdate(value, characteristic.uuid):
+        if self.util.notificationUpdate(value, uuid):
             # We received some new data. Lets push it to the datalogger
             items = ['current', 'input_current', 'charge_current',
                      'voltage', 'input_voltage', 'charge_voltage',
@@ -342,83 +168,21 @@ class SolarDevice(gatt.Device):
             except:
                 pass
 
-    def characteristic_enable_notifications_succeeded(self, characteristic):
-        super().characteristic_enable_notifications_succeeded(characteristic)
-        logging.info("[{}] Notifications enabled for: [{}]".format(self.logger_name, characteristic.uuid))
+    def characteristic_write_value(self, value, char_uuid):
+        client = self._client
+        if client is None or char_uuid is None:
+            return
+        loop = getattr(client, "_solar_loop", None) or asyncio.get_event_loop()
 
-    def characteristic_enable_notifications_failed(self, characteristic, error):
-        super().characteristic_enable_notifications_failed(characteristic, error)
-        logging.warning("[{}] Enabling notifications failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
-
-
-    def characteristic_write_value(self, value, write_characteristic):
-        logging.debug("[{}] Writing data to {} - {} ({})".format(self.logger_name, write_characteristic.uuid, value, bytearray(value).hex()))
-        self.writing = value
-        write_characteristic.write_value(value)
-
-    def characteristic_write_value_succeeded(self, characteristic):
-        super().characteristic_write_value_succeeded(characteristic)
-        logging.debug("[{}] Write to characteristic done for: [{}]".format(self.logger_name, characteristic.uuid))
-        self.writing = False
-
-    def characteristic_write_value_failed(self, characteristic, error):
-        super().characteristic_write_value_failed(characteristic, error)
-        logging.warning("[{}] Write to characteristic failed for: [{}] with error [{}]".format(self.logger_name, characteristic.uuid, str(error)))
-        if error == "In Progress" and self.writing is not False:
-            time.sleep(0.1)
-            self.characteristic_write_value(self.writing, characteristic)
-        else:
-            self.writing = False
-
-    # Pollers
-    # Implement polling in separate threads to be able to
-    # sleep without blocking notifications
-
-    def device_poller(self):
-        # Loop every second - the device plugin is responsible for not overloading the device with requests
-        logging.info("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
-        self.run_device_poller = True
-        while self.run_device_poller:
-            logging.debug("[{}] Looping thread {}".format(self.logger_name, threading.current_thread().name))
-            data = self.util.pollRequest()
-            if data:
-                self.characteristic_write_value(data, self.device_write_characteristic_polling)
-            time.sleep(1)
-        logging.info("[{}] Ending thread {}".format(self.logger_name, threading.current_thread().name))
-
-
-    def mqtt_poller(self, trigger):
-        # Loop to fetch MQTT-commands
-        logging.info("[{}] Starting new thread {}".format(self.logger_name, threading.current_thread().name))
-        self.run_command_poller = True
-        while self.run_command_poller:
-            mqtt_sets = []
-            datas = []
-            logging.info("[{}] {} Waiting for event...".format(self.logger_name, threading.current_thread().name))
-            trigger.wait()
-            logging.info("[{}] {} Event happened...".format(self.logger_name, threading.current_thread().name))
-            trigger.clear()
+        async def _w():
             try:
-                mqtt_sets = self.datalogger.mqtt.sets[self.logger_name]
-                self.datalogger.mqtt.sets[self.logger_name] = []
+                await client.write_gatt_char(char_uuid, value)
             except Exception as e:
-                logging.error("[{}] {} Something bad happened: {}".format(self.logger_name, threading.current_thread().name, e))
-                mqtt_sets = []
-                pass
-            for msg in mqtt_sets:
-                var = msg[0]
-                message = msg[1]
-                logging.info("[{}] MQTT-msg: {} -> {}".format(self.logger_name, var, message))
-                datas = self.util.cmdRequest(var, message)
-                if len(datas) > 0:
-                    for data in datas:
-                        logging.debug("[{}] Sending data to device: {}".format(self.logger_name, data))
-                        self.characteristic_write_value(data, self.device_write_characteristic_commands)
-                        time.sleep(0.2)
-                else:
-                    logging.debug("[{}] Unknown MQTT-command {} -> {}".format(self.logger_name, var, message))
-                logging.info("[{}] MQTT msq complete".format(self.logger_name))
-        logging.info("[{}] Ending thread {}".format(self.logger_name, threading.current_thread().name))
+                logging.debug("[{}] write failed: {}".format(self.logger_name, e))
+        try:
+            asyncio.run_coroutine_threadsafe(_w(), loop)
+        except Exception as e:
+            logging.debug("[{}] write schedule failed: {}".format(self.logger_name, e))
 
 
 class PowerDevice():

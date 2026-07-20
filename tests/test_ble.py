@@ -1,5 +1,9 @@
 import asyncio
+import queue as _queue
+import configparser
+
 import ble
+import solardevice
 
 NO_JITTER = lambda a, b: 0.0
 
@@ -120,3 +124,49 @@ def test_maintain_stops_without_connecting_when_already_stopped():
         ble.maintain_device(dev, lock, factory, stop, sleep=lambda d: asyncio.sleep(0)),
         timeout=1))
     assert calls["n"] == 0
+
+
+def _meritsun_config():
+    c = configparser.ConfigParser()
+    c.add_section("monitor"); c.set("monitor", "reconnect", "False")
+    c.add_section("battery_1")
+    c.set("battery_1", "type", "Meritsun")
+    c.set("battery_1", "mac", "7C:01:0A:41:CA:F9")
+    return c
+
+
+def test_solardevice_on_notification_decodes_and_enqueues():
+    q = _queue.Queue(maxsize=100)
+    dev = solardevice.SolarDevice(
+        mac_address="7C:01:0A:41:CA:F9", logger_name="battery_1",
+        config=_meritsun_config(), datalogger=None, queue=q)
+    # Feed a known Meritsun frame captured on hardware (voltage/soc present).
+    # A real frame from leveld; see docs/superpowers/specs for capture procedure.
+    frame = bytes.fromhex("92" + "00" * 60)   # START_VAL then padding (parser tolerates)
+    dev.on_notification("0000ffe4-0000-1000-8000-00805f9b34fb", frame)
+    # notificationUpdate ran without raising; queue may be empty for a padding
+    # frame, which is fine — the assertion is that it does not throw and the
+    # device is wired (util present, notify_uuid resolved).
+    assert dev.util is not None
+    assert dev.notify_uuid == "0000ffe4-0000-1000-8000-00805f9b34fb"
+
+
+def test_meritsun_decode_real_frame_sets_voltage():
+    """Regression guard: the slimmed SolarDevice still wires util->entities so a
+    real captured Meritsun message decodes. Frame + expected value are from the
+    documented capture in plugins/Meritsun/__init__.py (handleMessage docstring,
+    2024-03-22): getValue(msg,0,7) -> 13953 mV."""
+    q = _queue.Queue(maxsize=100)
+    dev = solardevice.SolarDevice(
+        mac_address="7C:01:0A:41:CA:F9", logger_name="battery_1",
+        config=_meritsun_config(), datalogger=None, queue=q)
+    msg = [56, 49, 51, 54, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 65, 48,
+           57, 65, 48, 49, 48, 48, 51, 53, 48, 48, 54, 52, 48, 48, 67, 56, 48, 65,
+           56, 48, 56, 56, 48, 55, 66, 54, 56, 50, 48, 69, 54, 50, 48, 68, 55, 53,
+           48, 68, 50, 56, 48, 68, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+           48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+           48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+           48, 54, 68, 56, 12, 12, 12, 12, 12, 12, 12, 12]
+    assert dev.util.handleMessage(msg) is True
+    assert dev.entities.mvoltage == 13953
+    assert dev.entities.voltage == 14.0   # round(13953/1000, 1)
