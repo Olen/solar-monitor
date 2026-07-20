@@ -175,22 +175,33 @@ class BleManager:
 
 def command_bridge(datalogger, devices_by_name, manager, stop_event):
     """Threaded: consume MQTT commands (datalogger.mqtt.sets/trigger) and route
-    them to the async layer. Replaces the per-device mqtt_poller thread."""
+    them to the async layer. Replaces the per-device mqtt_poller thread.
+
+    The datalogger's on_message drains into mqtt.sets[device] and fires
+    mqtt.trigger[device] -- but nothing else creates those trigger Events (the
+    slim SolarDevice no longer does), so we register a single shared wake Event
+    for every device here. We also drain on the 0.5s poll timeout, so a command
+    that arrives before its trigger is registered (or with no trigger at all) is
+    still delivered."""
     if not (datalogger and datalogger.mqtt):
         return
     mqtt = datalogger.mqtt
-    triggers = mqtt.trigger
+    wake = threading.Event()
+    registered = set()
     while not stop_event.is_set():
-        fired = False
-        for name, trig in list(triggers.items()):
-            if trig.wait(0.5):
-                trig.clear()
-                fired = True
-                dev = devices_by_name.get(name)
-                sets = mqtt.sets.get(name, [])
-                mqtt.sets[name] = []
-                if dev is not None:
-                    for var, message in sets:
-                        manager.submit_command(dev, var, message)
-        if not fired:
-            stop_event.wait(0.2)
+        for name in list(devices_by_name.keys()):
+            if name not in registered:
+                mqtt.trigger[name] = wake        # all devices share one wake Event
+                registered.add(name)
+        wake.wait(0.5)                           # wake on a command, else poll
+        wake.clear()
+        for name in list(devices_by_name.keys()):
+            sets = mqtt.sets.get(name)
+            if not sets:
+                continue
+            mqtt.sets[name] = []
+            dev = devices_by_name.get(name)
+            if dev is not None:
+                for var, message in sets:
+                    logging.info("[%s] MQTT command -> device: %s = %s", name, var, message)
+                    manager.submit_command(dev, var, message)
