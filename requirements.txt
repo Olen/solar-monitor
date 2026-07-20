@@ -1,9 +1,6 @@
-gatt
+bleak
 configparser
 requests
 paho-mqtt
 libscrc
 python-dateutil
-dbus-python
-pycairo 
-PyGObject==3.50.0
