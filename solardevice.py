@@ -179,17 +179,23 @@ class SolarDevice:
         client = self._client
         if client is None or char_uuid is None:
             return
+        # Plugins build write payloads as a bytearray (VEDirect) OR a plain list of
+        # ints (SolarLink). gatt accepted a list; bleak's write_gatt_char needs a
+        # bytes-like object, so a list raised TypeError and the write silently never
+        # happened -- that was the dead SolarLink power switch. Normalise here.
+        if not isinstance(value, (bytes, bytearray, memoryview)):
+            value = bytearray(value)
         loop = getattr(client, "_solar_loop", None) or asyncio.get_event_loop()
 
         async def _w():
             try:
                 await client.write_gatt_char(char_uuid, value)
             except Exception as e:
-                logging.debug("[{}] write failed: {}".format(self.logger_name, e))
+                logging.warning("[{}] characteristic write failed: {}".format(self.logger_name, e))
         try:
             asyncio.run_coroutine_threadsafe(_w(), loop)
         except Exception as e:
-            logging.debug("[{}] write schedule failed: {}".format(self.logger_name, e))
+            logging.warning("[{}] characteristic write schedule failed: {}".format(self.logger_name, e))
 
 
 class PowerDevice():

@@ -18,10 +18,13 @@ async def _hold(dev, client, stop_event, poll_interval, sleep):
         if dev.need_polling and dev.device_write_characteristic_polling:
             data = dev.get_poll_data()
             if data:
+                # Plugins may return a list of ints; bleak needs a bytes-like object.
+                if not isinstance(data, (bytes, bytearray, memoryview)):
+                    data = bytearray(data)
                 try:
                     await client.write_gatt_char(dev.device_write_characteristic_polling, data)
                 except Exception as e:
-                    logging.debug("[%s] poll write failed: %r", dev.logger_name, e)
+                    logging.warning("[%s] poll write failed: %r", dev.logger_name, e)
                     break
         await sleep(poll_interval)
 
