@@ -215,7 +215,7 @@ class PowerDevice():
             'val': 0,
             'min': 1,
             'max': 1000,
-            'maxdiff': 200
+            'maxdiff': 100
         }
         self._dkelvin = {
             'val': 2731,
