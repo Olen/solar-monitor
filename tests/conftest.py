@@ -91,6 +91,36 @@ def _install_paho_stub():
     mqtt = types.ModuleType("paho.mqtt")
     client = types.ModuleType("paho.mqtt.client")
 
+    class Client:
+        """Records what the code under test asked of the broker."""
+
+        def __init__(self, *args, **kwargs):
+            self.connected_to = None
+            self.published = []
+            self.subscribed = []
+
+        def username_pw_set(self, **kwargs):
+            pass
+
+        def connect(self, host, port):
+            if not isinstance(port, int):
+                # what real paho does: `if port <= 0` on a str
+                raise TypeError(
+                    "'<=' not supported between instances of "
+                    "'{}' and 'int'".format(type(port).__name__))
+            self.connected_to = (host, port)
+
+        def loop_start(self):
+            pass
+
+        def publish(self, topic, payload=None, qos=0, retain=False):
+            self.published.append((topic, payload, qos, retain))
+            return types.SimpleNamespace(rc=0, mid=1)
+
+        def subscribe(self, topic):
+            self.subscribed.append(topic)
+
+    client.Client = Client
     mqtt.client = client
     paho.mqtt = mqtt
 

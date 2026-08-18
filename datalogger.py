@@ -54,7 +54,10 @@ class DataLoggerMqtt():
         self.client.connect(broker, port)                                   # establish connection
         self.client.loop_start()                                            # start the loop
 
-        self.sensors = []
+        # A set, not a list: `publish(refresh=True)` re-appends an already-known
+        # topic, so this grew without bound -- 1000 entries for one unique topic
+        # on a long-running install -- and every publish paid a linear scan.
+        self.sensors = set()
         self.sets = {}
         if not prefix.endswith("/"):
             prefix = prefix + "/"
@@ -87,7 +90,7 @@ class DataLoggerMqtt():
                 # entities went missing after a container restart, which resets
                 # self.sensors and so re-ran this block for every entity.
                 self.create_sensor(device, var)
-            self.sensors.append(topic)
+            self.sensors.add(topic)
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         # Switch state at QoS 1 so a toggle during a disconnect is delivered on
         # reconnect rather than silently dropped; high-frequency sensor state
@@ -307,7 +310,7 @@ class DataLogger():
                     device_types[section] = dtype
             self.mqtt = DataLoggerMqtt(
                 config.get('mqtt', 'broker'),
-                config.get('mqtt', 'port', fallback=1883),
+                config.getint('mqtt', 'port', fallback=1883),
                 prefix=config.get('mqtt', 'prefix', fallback=None),
                 username=config.get('mqtt', 'username', fallback=None),
                 password=config.get('mqtt', 'password', fallback=None),
