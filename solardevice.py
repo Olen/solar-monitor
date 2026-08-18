@@ -79,6 +79,7 @@ class SolarDevice:
             self.entities = RectifierDevice(parent=self)
         else:
             self.entities = PowerDevice(parent=self)
+        self.entities.apply_limit_overrides(config, logger_name)
         self.util = self.module.Util(self)
 
     def alias(self):
@@ -608,6 +609,41 @@ class PowerDevice():
                 out = "{} {} == {},".format(out, var, self.__dict__[var])
         logging.debug(out)
 
+
+    LIMIT_KEYS = ('min', 'max', 'maxdiff')
+
+    def apply_limit_overrides(self, config, section):
+        """Override validation bounds from the device's own config section.
+
+        The shipped defaults suit the hardware this was written against; other
+        hardware legitimately exceeds them -- two 24 V panels in series reach
+        nearly 70 V, well past the default input-voltage ceiling, and every
+        reading is then rejected as out of bands (#27).
+
+        A definition named `_input_mvoltage` is tuned with `input_mvoltage_max`,
+        `input_mvoltage_min` and `input_mvoltage_maxdiff`, in the same units the
+        device stores -- millivolts, milliamps, /10 kelvin, /10 %.
+        """
+        if not (config and section and config.has_section(section)):
+            return
+        for name, definition in list(self.__dict__.items()):
+            if not isinstance(definition, dict):
+                continue
+            if not all(key in definition for key in self.LIMIT_KEYS):
+                continue
+            for key in self.LIMIT_KEYS:
+                option = "{}_{}".format(name.lstrip('_'), key)
+                if not config.has_option(section, option):
+                    continue
+                try:
+                    value = config.getfloat(section, option)
+                except ValueError:
+                    logging.warning("[{}] {} is not a number; keeping {} = {}".format(
+                        section, option, key, definition[key]))
+                    continue
+                logging.info("[{}] {} {}: {} -> {}".format(
+                    section, name.lstrip('_'), key, definition[key], value))
+                definition[key] = value
 
     def validate(self, var, val):
         definition = getattr(self, var)

@@ -74,6 +74,50 @@ The systemd unit file might need some adjustments to point to the right scripts
 Alternatively just run `solar-monitor.py` in something like termux or screen (might require root privileges to access bluetooth directly)
 
 
+# Tuning the value limits
+
+Every reading is checked against bounds before it is published: a hard `min` and
+`max`, and a `maxdiff` limiting how far a value may move between readings. This
+is deliberate — these devices report occasional nonsense, and an unfiltered spike
+shows up as a dip in your graphs or a false alert.
+
+The shipped defaults suit the hardware this was written against. Other hardware
+legitimately exceeds them: two 24 V panels in series reach nearly 70 V, well past
+the default input-voltage ceiling, and every reading is then rejected as out of
+bands with a warning in the log.
+
+Override any bound in that device's own section. The option is the value's name
+followed by `_min`, `_max` or `_maxdiff`:
+
+```ini
+[regulator]
+type = SolarLink
+mac = 11:11:11:11:11:11
+input_mvoltage_max = 96000       # 96 V panel input instead of the default
+input_mvoltage_maxdiff = 48000
+```
+
+Values are stored at the best available resolution, so **the units are milli-**
+**whatever**: millivolts, milliamps, milliwatts. Temperature is /10 kelvin and
+soc is /10 %. `96000` above is 96 V.
+
+Tunable names, depending on device type:
+
+| | |
+|---|---|
+| voltage | `mvoltage`, `input_mvoltage`, `charge_mvoltage` |
+| current | `mcurrent`, `input_mcurrent`, `charge_mcurrent` |
+| power | `mpower`, `input_mpower`, `charge_mpower` |
+| capacity | `mcapacity`, `max_capacity`, `exp_capacity` |
+| other | `dsoc`, `dkelvin`, `bkelvin`, `charge_cycles` |
+
+Each override is logged at startup, so `Changed input_mvoltage max: 48000 -> 96000`
+in the log confirms it was picked up. An unparseable value is ignored with a
+warning and the default kept.
+
+If a reading is rejected but you believe the device, the log line names the value,
+the bound and both numbers — that tells you which option to set and to what.
+
 # Output
 ```
 2020-06-22 13:34:09,149 INFO    : Adapter status - Powered: True
