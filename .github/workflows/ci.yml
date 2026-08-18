@@ -18,6 +18,6 @@ jobs:
         # runtime dep imported by datalogger and exercised by a test.
         run: pip install pytest requests
       - name: Byte-compile (syntax gate)
-        run: python -m py_compile monitor_app.py solar-monitor.py supervisor.py solardevice.py datalogger.py duallog.py
+        run: python -m py_compile monitor_app.py solar-monitor.py supervisor.py solardevice.py datalogger.py duallog.py ble.py connection.py
       - name: Run tests
         run: python -m pytest -q
