@@ -99,6 +99,13 @@ class DataLoggerMqtt():
         ret = self.client.publish(topic, val, qos=qos, retain=True)
         if "power_switch" in var and time.time() > self._listener_created[device, var] + 300:
             self.create_listener(device, var)
+        # rc is MQTT_ERR_SUCCESS (0) once the message is queued for delivery;
+        # anything else (typically MQTT_ERR_NO_CONN) means it was dropped.
+        rc = getattr(ret, "rc", 0)
+        if rc != 0:
+            logging.warning("Publish to {} failed (rc={})".format(topic, rc))
+            return False
+        return True
 
     def _device_block(self, device):
         """The Home Assistant 'device' object shared by every entity of one
@@ -354,24 +361,35 @@ class DataLogger():
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = None
 
+        # Remember a value as sent only once it has been. Committing first meant
+        # a publish that failed -- a broker outage, a dropped link -- left the
+        # cache claiming the value was delivered, so the next identical reading
+        # compared equal and never resent it. The change then waited for the
+        # value to move again or for the 10-minute refresh.
         if self.logdata[device][var]['value'] != val:
-            self.logdata[device][var]['ts'] = ts
-            self.logdata[device][var]['value'] = val
             logging.info("[{}] Sending new data {}: {}".format(device, var, val))
-            self.send_to_server(device, var, val)
+            if self.send_to_server(device, var, val):
+                self.logdata[device][var]['ts'] = ts
+                self.logdata[device][var]['value'] = val
+            else:
+                logging.warning("[{}] {} = {} not delivered; will resend".format(device, var, val))
         elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=10):
-            self.logdata[device][var]['ts'] = ts
-            self.logdata[device][var]['value'] = val
-            # logging.debug("Sending data to server due to long wait")
             logging.info("[{}] Sending refreshed data {}: {}".format(device, var, val))
-            self.send_to_server(device, var, val, True)
+            if self.send_to_server(device, var, val, True):
+                self.logdata[device][var]['ts'] = ts
+                self.logdata[device][var]['value'] = val
 
 
 
 
     def send_to_server(self, device, var, val, refresh=False):
+        """Return True only if every configured sink accepted the value.
+
+        The caller uses this to decide whether to remember the value as sent.
+        """
+        delivered = True
         if self.mqtt:
-            self.mqtt.publish(device, var, val, refresh)
+            delivered = self.mqtt.publish(device, var, val, refresh) and delivered
         if self.url:
             logging.info("[{}] Sending data to {}".format(device, self.url))
             ts = datetime.now().isoformat(' ', 'seconds')
@@ -379,8 +397,13 @@ class DataLogger():
             header = {'Content-type': 'application/json', 'Accept': 'text/plain', 'Authorization': 'Bearer {}'.format(self.token)}
             try:
                 response = requests.post(url=self.url, json=payload, headers=header, timeout=(5, 10))
+                if response.status_code >= 400:
+                    logging.error("POST to {} returned {}".format(self.url, response.status_code))
+                    delivered = False
             except requests.exceptions.RequestException as e:
                 logging.error("Failed to POST to {}: {}".format(self.url, e))
+                delivered = False
+        return delivered
 
 
 
