@@ -116,7 +116,16 @@ class SolarDevice:
         return self.util.pollRequest() if self.util else None
 
     def run_command(self, var, message):
-        for data in self.util.cmdRequest(var, message):
+        # Only two of the six plugins implement cmdRequest; the rest are
+        # read-only devices. Treat "no commands" as empty rather than letting an
+        # AttributeError reach the caller, where it surfaces as a logged
+        # traceback and a command that silently does nothing.
+        cmd_request = getattr(self.util, "cmdRequest", None)
+        if cmd_request is None:
+            logging.warning("[{}] plugin '{}' accepts no commands; ignoring {} = {}".format(
+                self.logger_name, self.type, var, message))
+            return
+        for data in cmd_request(var, message):
             self.characteristic_write_value(data, self.device_write_characteristic_commands)
 
     def _enqueue(self, item):
