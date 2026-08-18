@@ -47,6 +47,10 @@ persistent = True
 [regulator]
 type = SolarLink
 mac = 11:11:11:11:11:11
+# Validation bounds can be tuned per device when the defaults do not fit your
+# hardware -- see "Tuning the value limits" in the README. Units are milli-
+# whatever, so this is a 96 V panel input:
+# input_mvoltage_max = 96000
 reconnect = False
 # Hold every device connected continuously (recommended). See [monitor] above.
 persistent = True
