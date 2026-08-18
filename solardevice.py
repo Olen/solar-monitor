@@ -208,6 +208,10 @@ class SolarDevice:
 
 
 class PowerDevice():
+    # How many consistent out-of-maxdiff readings to reject before believing the
+    # device. Guards against a stale stored value latching an entity for ever.
+    MAX_CONSECUTIVE_REJECTS = 2
+
     '''
     General class for different PowerDevices
     Stores the values read from the devices with the best available resolution (milli-whatever)
@@ -618,9 +622,30 @@ class PowerDevice():
             logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (< min {})".format(self.name, var, definition['val'], val, definition['min']))
             return False
         if (definition['val'] != 0 and definition['val'] != 2731) and abs(val - definition['val']) > definition['maxdiff']:
-            logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {})".format(self.name, var, definition['val'], val, definition['maxdiff']))
-            return False
+            # A spurious reading is transient; a real change persists. Reject the
+            # first few, then believe the device. Rejecting for ever latches the
+            # entity: charge_cycles is monotonic with maxdiff 1, so a single
+            # missed notification puts every later reading out of band and the
+            # value never moves again.
+            #
+            # Only readings consistent with each other count towards the escape,
+            # so scattered noise still never gets through.
+            previous = definition.get('rejected_val')
+            if previous is not None and abs(val - previous) <= definition['maxdiff']:
+                definition['rejected'] = definition.get('rejected', 0) + 1
+            else:
+                definition['rejected'] = 1
+            definition['rejected_val'] = val
+            if definition['rejected'] <= self.MAX_CONSECUTIVE_REJECTS:
+                logging.warning("[{}] Value of {} out of bands: Changed from {} to {} (> maxdiff {}, rejected {}/{})".format(
+                    self.name, var, definition['val'], val, definition['maxdiff'],
+                    definition['rejected'], self.MAX_CONSECUTIVE_REJECTS + 1))
+                return False
+            logging.warning("[{}] Value of {} accepted after {} consistent readings out of band: {} -> {}".format(
+                self.name, var, definition['rejected'], definition['val'], val))
         logging.debug("[{}] Value of {} changed from {} to {}".format(self.name, var, definition['val'], val))
+        definition['rejected'] = 0
+        definition['rejected_val'] = None
         self.__dict__[var]['val'] = val
 
 
