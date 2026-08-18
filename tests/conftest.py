@@ -114,6 +114,10 @@ def _install_paho_stub():
             pass
 
         def publish(self, topic, payload=None, qos=0, retain=False):
+            # rc mirrors paho: 0 is MQTT_ERR_SUCCESS, 4 is MQTT_ERR_NO_CONN.
+            # Tests set `offline` to simulate a broker outage.
+            if getattr(self, "offline", False):
+                return types.SimpleNamespace(rc=4, mid=0)
             self.published.append((topic, payload, qos, retain))
             return types.SimpleNamespace(rc=0, mid=1)
 
