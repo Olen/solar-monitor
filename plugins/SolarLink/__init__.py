@@ -97,8 +97,8 @@ class Util():
             data = self.create_poll_request('BatteryParamInfo')
         if self.poll_loop_count == 3:
             data = self.create_poll_request('SolarPanelInfo')
-        # if self.poll_loop_count == 5:
-        #     self.create_poll_request('SolarPanelAndBatteryState')
+        if self.poll_loop_count == 5:
+            data = self.create_poll_request('SolarPanelAndBatteryState')
         # if self.poll_loop_count == 7:
         #     self.create_poll_request('ParamSettingData')
         if self.poll_loop_count == 10:
