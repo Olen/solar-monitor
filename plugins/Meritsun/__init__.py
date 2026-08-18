@@ -9,7 +9,7 @@ from datetime import datetime
 # import duallog
 import logging
 
-from codec import INT32_MAX, UINT32_WRAP, to_signed
+from codec import INT32_MAX, UINT32_WRAP, ascii_hex_value, to_signed
 
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
@@ -61,13 +61,7 @@ class Util():
         self.prev_values = []
 
     def getValue(self, buf, start, end):
-        try:
-            # bytes = buf[0:8]
-            chars = list(map(chr, buf[start:end + 1]))
-            values = [ ''.join(x) for x in zip(chars[0::2], chars[1::2]) ]
-            return int("".join(reversed(values)), 16)
-        except Exception as e:
-            return 0
+        return ascii_hex_value(buf, start, end)
 
 
 
