@@ -123,10 +123,28 @@ def _install_gi_stub():
     sys.modules["gi.repository"] = repository
 
 
+def _install_libscrc_stub():
+    """`libscrc` is a C extension used by RenogyBatt for Modbus CRCs. Tests that
+    import that plugin only need the module to resolve at import time; nothing
+    exercises a CRC, so a stub that raises if actually called is honest."""
+    if "libscrc" in sys.modules:
+        return
+
+    libscrc = types.ModuleType("libscrc")
+
+    def _unavailable(*args, **kwargs):
+        raise NotImplementedError("libscrc is stubbed in tests; no test exercises a CRC")
+
+    libscrc.modbus = _unavailable
+
+    sys.modules["libscrc"] = libscrc
+
+
 _install_dbus_stub()
 _install_gatt_stub()
 _install_paho_stub()
 _install_gi_stub()
+_install_libscrc_stub()
 
 
 import pytest

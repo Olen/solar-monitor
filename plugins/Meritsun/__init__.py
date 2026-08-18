@@ -9,6 +9,8 @@ from datetime import datetime
 # import duallog
 import logging
 
+from codec import INT32_MAX, UINT32_WRAP, to_signed
+
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
 
@@ -227,9 +229,7 @@ class Util():
         # decoded on every framed packet; each entity setter validates its own
         # value against physical bounds and rejects any that slipped through.
         self.PowerDevice.entities.mvoltage = mvoltage
-        mcurrent = self.getValue(message, 8, 15)
-        if mcurrent > 2147483647:
-            mcurrent = mcurrent - 4294967295
+        mcurrent = to_signed(self.getValue(message, 8, 15), UINT32_WRAP, INT32_MAX)
         self.PowerDevice.entities.mcurrent = mcurrent
         self.PowerDevice.entities.mcapacity = self.getValue(message, 16, 23)
         self.PowerDevice.entities.charge_cycles = self.getValue(message, 24, 27)
