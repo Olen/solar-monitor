@@ -57,15 +57,6 @@ class Util():
         self.PowerDevice = power_device
         self.end = 0
         self.prev_values = []
-        # A real full data frame carries this constant field (ASCII hex) at a fixed
-        # byte offset from the START_VAL marker. The pack also emits shorter status/
-        # other packet types (different layout) and the post-upgrade BlueZ stream
-        # duplicates fragments inside frames; both start with the same marker but
-        # decode to garbage. Requiring this signature at its fixed offset is what
-        # separates real data frames from the rest -- validated on both packs across
-        # charge and discharge with zero good frames lost.
-        self.DATA_SIGNATURE = b"0B008087"
-        self.DATA_SIGNATURE_OFFSET = 35
 
     def getValue(self, buf, start, end):
         try:
@@ -144,8 +135,10 @@ class Util():
         if not data:
             return False
 
-        # The device streams several packet types back-to-back. A data packet
-        # starts with START_VAL (0x92); another packet type starts with 0xC9.
+        # The device streams frames back-to-back behind two markers, 0x92 and
+        # 0xC9. Both carry the same layout -- every checksum-valid frame decodes
+        # identically regardless of marker, and 0xC9 carries about two thirds of
+        # them -- so both start a frame.
         # Neither marker, nor the END_VAL (0x0C) padding, ever appears inside the
         # ASCII-hex payload, so the markers delimit packets unambiguously. We
         # accumulate the stream and re-sync on every marker, so a single lost or
@@ -163,9 +156,13 @@ class Util():
 
         updated = False
         while True:
-            start = self._stream.find(self.START_VAL)
+            start = -1
+            for mark in (self.START_VAL, 0xC9):
+                q = self._stream.find(mark)
+                if q >= 0 and (start < 0 or q < start):
+                    start = q
             if start < 0:
-                # No data packet forming; drop the (unhandled) leading bytes.
+                # No frame forming; drop the (unhandled) leading bytes.
                 self._stream.clear()
                 break
             nxt = -1
@@ -184,30 +181,31 @@ class Util():
                 updated = True
         return updated
 
+    def _frameEnd(self, packet):
+        # The checksum spans the frame up to its trailing 0x0C padding. `find`
+        # stops at the first 0x0C, which in this stream sits far too early; the
+        # device's own rule is the last padding byte before offset 110.
+        end = 0
+        for i in range(1, min(len(packet), 122)):
+            if packet[i] == self.END_VAL and end < 110:
+                end = i + 1
+        return end
+
     def _handleDataPacket(self, packet):
-        # packet[0] == START_VAL. Only real data frames carry DATA_SIGNATURE at its
-        # fixed offset; require it to reject the interleaved status/other packet
-        # types and mis-framed fragments (all of which decode to garbage). The
-        # scalar head stays intact even in fragment-bloated frames, so this is
-        # enough to trust the scalars; cells live further in and only survive in
-        # non-bloated frames, so gate them on length as well.
-        if packet.find(self.DATA_SIGNATURE) != self.DATA_SIGNATURE_OFFSET:
-            return False
-        end = packet.find(self.END_VAL)
-        if end < 0:
-            end = len(packet)
+        # Gate on the protocol checksum -- the only invariant that holds. The
+        # previous signature gate keyed on bytes that turned out to be live data:
+        # it matched 142/363 frames in July and 0/122 in August.
         buf = [0] * 122
         for k in range(min(len(packet), 122)):
             buf[k] = packet[k]
         self.RevBuf = buf
         self.Revindex = min(len(packet), 121)
-        self.end = end
-        full_frame = len(packet) <= 130
-        return self.handleMessage(buf[1:self.Revindex], full=full_frame)
-
-
-
-
+        self.end = self._frameEnd(packet)
+        if self.end < 60 or not self.validateChecksum(buf):
+            logging.debug("[%s] frame rejected: len=%d end=%d",
+                          self.PowerDevice.alias(), len(packet), self.end)
+            return False
+        return self.handleMessage(buf[1:self.Revindex], full=len(packet) <= 130)
 
 
     def handleMessage(self, message, full=True):
@@ -218,8 +216,7 @@ class Util():
         self.prev_values = message
 
         # A real pack always reports a nonzero pack voltage; a frame decoding it as
-        # 0 is not a data frame at all. (The DATA_SIGNATURE gate already rejects the
-        # other packet types; this is a cheap backstop.)
+        # 0 is not a data frame at all -- a cheap backstop behind the checksum.
         mvoltage = self.getValue(message, 0, 7)
         if mvoltage < 1000:
             return False
