@@ -14,9 +14,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install test dependencies
-        # gatt/dbus/paho/gi are stubbed in tests/conftest.py; requests is a real
-        # runtime dep imported by datalogger and exercised by a test.
-        run: pip install pytest requests
+        # gatt/dbus/paho/gi/libscrc are stubbed in tests/conftest.py (system or
+        # C-extension packages). requests and python-dateutil are pure-Python
+        # runtime deps imported at module level by code under test.
+        run: pip install pytest requests python-dateutil
       - name: Byte-compile (syntax gate)
         run: python -m py_compile monitor_app.py solar-monitor.py supervisor.py solardevice.py datalogger.py duallog.py ble.py connection.py
       - name: Run tests
