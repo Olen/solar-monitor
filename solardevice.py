@@ -261,6 +261,9 @@ class PowerDevice():
             'max': 200000,
             'maxdiff': 100000
         }
+        # 48 V, matching _input_mvoltage and _charge_mvoltage. Subclasses that
+        # know their system voltage narrow it: BatteryDevice to 10-15 V,
+        # RectifierDevice to 50 V, InverterDevice to 250 V.
         self._mvoltage = {
             'val': 0,
             'min': 0,
@@ -302,12 +305,6 @@ class PowerDevice():
             'min': 0,
             'max': 48000,
             'maxdiff': 12000
-        }
-        self._mvoltage = {
-            'val': 0,
-            'min': 0,
-            'max': 15000,
-            'maxdiff': 15000
         }
         self._msg = None
         self._status = None
