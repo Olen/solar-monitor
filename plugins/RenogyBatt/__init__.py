@@ -1,8 +1,20 @@
 import logging
+
+from codec import UINT16_WRAP, to_signed
 import libscrc
 import dateutil.parser
 import re
 from datetime import datetime
+
+# The pack reports current and temperature as 16-bit two's complement, scaled at
+# the point of use. The sign threshold is a practical bound, not the arithmetic
+# one (32767 raw): no pack reaches 255 A or 255 C, and the device uses the top of
+# the range for negatives.
+CURRENT_SCALE = .01
+TEMPERATURE_SCALE = .1
+CURRENT_WRAP = UINT16_WRAP * CURRENT_SCALE          # 655.36
+TEMPERATURE_WRAP = UINT16_WRAP * TEMPERATURE_SCALE  # 6553.6
+SIGN_THRESHOLD = 255
 
 class Config():
     NOTIFY_SERVICE_UUID = "0000fff0-0000-1000-8000-00805f9b34fb"
@@ -188,9 +200,8 @@ class Util():
         self.PowerDevice.entities.soc = capacity/self.max_capacity * 100
         self.PowerDevice.entities.max_capacity = self.max_capacity
 
-        current = self.Bytes2Int(bs, 3, 2) * .01
-        if current > 255:
-            current = current - 655.34
+        current = to_signed(self.Bytes2Int(bs, 3, 2) * CURRENT_SCALE,
+                            CURRENT_WRAP, SIGN_THRESHOLD)
         self.PowerDevice.entities.current = current
         self.updateCapacityFromCurrent()
         self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 5, 2) * .1
@@ -216,9 +227,8 @@ class Util():
             local_s = 5 + (j*2)
             logging.debug("Temperature {} {} => {}".format(
                 int(bs[local_s]),int(bs[local_s+1]), self.Bytes2Int(bs, local_s, 2) * .1))
-            temperature = self.Bytes2Int(bs, local_s, 2) * .1
-            if temperature > 255:
-                temperature = temperature - 6553.4
+            temperature = to_signed(self.Bytes2Int(bs, local_s, 2) * TEMPERATURE_SCALE,
+                                    TEMPERATURE_WRAP, SIGN_THRESHOLD)
             self.PowerDevice.entities.temperature_celsius = temperature
             self.PowerDevice.entities.battery_temperature_celsius = temperature
         return
