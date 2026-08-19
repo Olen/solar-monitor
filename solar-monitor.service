@@ -2,15 +2,29 @@
 Description=Solar Monitor
 After=network.target bluetooth.service
 Wants=bluetooth.service
- 
+
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/home/pi/solar-monitor
-ExecStart=/home/pi/solar-monitor/solar-monitor.py
-RestartSec=13
+User=solar-monitor
+Group=solar-monitor
+
+# Code read-only under /opt, config read-only under /etc, and the one writable
+# path is the state directory systemd creates and owns.
+ExecStart=/usr/bin/python3 -u /opt/solar-monitor/solar-monitor.py --ini /etc/solar-monitor/solar-monitor.ini
+WorkingDirectory=/var/lib/solar-monitor
+StateDirectory=solar-monitor
+
 Restart=always
- 
+RestartSec=13
+
+# BlueZ is reached over the system D-Bus, so no capabilities are needed.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
 [Install]
 WantedBy=multi-user.target
-
