@@ -29,7 +29,7 @@ jobs:
       # arm64 build needs emulation.
       - uses: docker/setup-qemu-action@v3
         with:
-          platforms: arm64
+          platforms: arm64,arm
 
       - uses: docker/setup-buildx-action@v3
 
@@ -66,7 +66,9 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # arm/v7 is for 32-bit Raspberry Pi OS, which reports linux/arm/v8
+          # on a 64-bit kernel and will not match an arm64 image.
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -41,8 +41,8 @@ The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring pla
 
 # Docker
 
-Images are published to the GitHub container registry for `linux/amd64` and
-`linux/arm64`:
+Images are published to the GitHub container registry for `linux/amd64`,
+`linux/arm64` and `linux/arm/v7`:
 
 ```
 ghcr.io/olen/solar-monitor:latest
@@ -64,6 +64,11 @@ in the same dir as you downloaded these files.
 
 To build the image yourself instead of pulling it, use `docker compose up -d
 --build`. That compiles `libscrc` and takes a while on a Raspberry Pi.
+
+A 32-bit Raspberry Pi OS on a 64-bit kernel reports its platform as
+`linux/arm/v8` and will not match an `arm64` image; it uses the `arm/v7` one.
+Check with `docker version --format "{{.Server.Arch}}"` — `arm` is 32-bit,
+`aarch64` is 64-bit.
 
 The container runs as uid 1000. If the ini-file and log directory on the host
 belong to a different user, build with `--build-arg UID=... --build-arg GID=...`
