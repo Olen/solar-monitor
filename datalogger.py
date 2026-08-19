@@ -9,6 +9,13 @@ import socket
 
 
 
+# How often a retained discovery config is rewritten to the broker. It has to
+# happen occasionally -- a broker that lost its retained store would otherwise
+# never get the configs back -- but it does not have to happen on every timed
+# resend, which republished every entity's config every few minutes.
+DISCOVERY_REPUBLISH_SECONDS = 3600
+
+
 class DataLoggerMqtt():
     def __init__(self, broker, port, prefix=None, username=None, password=None, hostname=None, device_types=None):
         logging.debug("Creating new MQTT-logger")
@@ -54,10 +61,10 @@ class DataLoggerMqtt():
         self.client.connect(broker, port)                                   # establish connection
         self.client.loop_start()                                            # start the loop
 
-        # A set, not a list: `publish(refresh=True)` re-appends an already-known
-        # topic, so this grew without bound -- 1000 entries for one unique topic
-        # on a long-running install -- and every publish paid a linear scan.
-        self.sensors = set()
+        # topic -> when its retained discovery config was last published.
+        # (A dict rather than the original list, which `publish(refresh=True)`
+        # re-appended to without bound -- 1000 entries for one unique topic.)
+        self.sensors = {}
         self.sets = {}
         if not prefix.endswith("/"):
             prefix = prefix + "/"
@@ -77,7 +84,10 @@ class DataLoggerMqtt():
 
     def publish(self, device, var, val, refresh=False):
         topic = "{}{}/{}/state".format(self.prefix, device, var)
-        if topic not in self.sensors or refresh:
+        published_at = self.sensors.get(topic)
+        due_for_republish = (published_at is not None and refresh
+                             and time.monotonic() - published_at >= DISCOVERY_REPUBLISH_SECONDS)
+        if published_at is None or due_for_republish:
             if "power_switch" in var:
                 self.create_switch(device, var)
                 self.create_listener(device, var)
@@ -90,7 +100,7 @@ class DataLoggerMqtt():
                 # entities went missing after a container restart, which resets
                 # self.sensors and so re-ran this block for every entity.
                 self.create_sensor(device, var)
-            self.sensors.add(topic)
+            self.sensors[topic] = time.monotonic()
         logging.debug("Publishing to MQTT {}: {} = {}".format(self.broker, topic, val))
         # Switch state at QoS 1 so a toggle during a disconnect is delivered on
         # reconnect rather than silently dropped; high-frequency sensor state
