@@ -66,41 +66,6 @@ class Util():
 
 
 
-    def getValue_old(self, buf, start, end):
-        # Reads "start" -> "end" from "buf" and return the hex-characters in the correct order
-        e = end + 1
-        b = end - 1
-        string = ""
-        while b >= start:
-            chrs = buf[b:e]
-            # logging.debug(chrs)
-            e = b
-            b = b - 2
-            string += chr(chrs[0]) + chr(chrs[1])
-            # logging.debug(string)
-        try:
-            ret = int(string, 16)
-        except Exception as e:
-            ret = 0
-        return ret
-
-
-    def asciitochar(self, a, b):
-        x1 = 0
-        if a >= 48 and a <= 57:
-            x1 = a - 48
-        elif a < 65 or a > 70:
-            x1 = 0
-        else:
-            x1 = (a - 65) + 10
-        x2 = x1 << 4
-        if b >= 48 and b <= 57:
-            return x2 + (b - 48)
-        if b < 65 or b > 70:
-            return x2 + 0
-        return x2 + (b - 65) + 10
-
-
     def validateChecksum(self, buf):
         # logging.debug(f"Checksum-calc: buf: {buf}")
         Chksum1 = 0

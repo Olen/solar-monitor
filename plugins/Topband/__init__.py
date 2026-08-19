@@ -44,34 +44,16 @@ class Util():
         return ascii_hex_value(buf, start, end)
 
 
-    def asciitochar(self, a, b):
-        x1 = 0
-        if a >= 48 and a <= 57:
-            x1 = a - 48
-        elif a < 65 or a > 70:
-            x1 = 0
-        else:
-            x1 = (a - 65) + 10
-        x2 = x1 << 4
-        if b >= 48 and b <= 57:
-            return x2 + (b - 48)
-        if b < 65 or b > 70:
-            return x2 + 0
-        return x2 + (b - 65) + 10
-
-
     def validateChecksum(self, buf):
         Chksum1 = 0
         Chksum2 = 0
         # end = 114
         j = 1
         while j < self.end - 5:
-            # Chksum1 = int((self.asciitochar(buf[j], buf[j + 1]) + Chksum1))
             Chksum1 = self.getValue(buf, j, j + 1) + Chksum1
             j += 2
         # logging.debug("Checksum 1: {}".format(Chksum1))
 
-        # Chksum2 = ((int(self.asciitochar(buf[j], buf[j + 1]))) << 8) + (int(self.asciitochar(buf[j + 2], buf[j + 3])))
         Chksum2 = (self.getValue(buf, j, j + 1) << 8) + self.getValue(buf, j + 2, j + 3)
 
         # logging.debug("Checksum 2: {}".format(Chksum2))
