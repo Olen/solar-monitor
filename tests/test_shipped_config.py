@@ -36,3 +36,30 @@ def test_no_credential_looking_token():
     assert token in ("", "your-token-here"), (
         f"shipped token should be a placeholder, got {token!r}"
     )
+
+
+def test_every_shipped_option_is_read_by_the_code():
+    """An option in the .dist that nothing reads is a promise the code breaks.
+
+    `persistent` was documented and offered for a year after the rotating
+    connection model it selected had been deleted, and `reconnect` was shipped
+    in seven places while no code ever read it (#76).
+    """
+    import glob
+    import re
+
+    root = os.path.dirname(DIST)
+    sources = "\n".join(
+        open(f, encoding="utf-8").read()
+        for f in glob.glob(os.path.join(root, "*.py"))
+        + glob.glob(os.path.join(root, "plugins", "*", "__init__.py"))
+    )
+
+    cp = _read_dist()
+    unread = []
+    for section in cp.sections():
+        for option in cp.options(section):
+            if not re.search(rf"""['"]{re.escape(option)}['"]""", sources):
+                unread.append(f"[{section}] {option}")
+    assert not unread, (
+        "shipped in solar-monitor.ini.dist but read by no code: " + ", ".join(unread))

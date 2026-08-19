@@ -66,17 +66,24 @@ its connect→resolve window at a time, held just for that window, then released
 while already-resolved links stay held. Several devices can be *connected* at
 once; only the act of *connecting* is serialized.
 
-## Connection model (persistent vs rotating)
+## Connection model
 
-- **Persistent (recommended for all devices):** each device is held connected
-  continuously (`persistent = True` in its ini section). A healthy adapter holds
-  them all. Required for **pure-notify** devices (e.g. Meritsun batteries) that
-  never answer polls — they only push notifications, so they must stay connected
-  to deliver any data at all.
-- **Rotating (fallback):** if a controller genuinely cannot hold that many links,
-  leave devices non-persistent and they share one slot — connect, read for
-  `rotate_dwell` seconds, disconnect, next (`rotate_gap` between). Poor fit for
-  pure-notify devices, which may not push data within a short dwell.
+Every configured device is held connected continuously. A healthy adapter holds
+them all: the reference install keeps four links (two batteries, a regulator and
+an inverter) for weeks at a time without a single reconnect.
+
+This is not merely preferred, it is required for **pure-notify** devices such as
+the Meritsun batteries. They never answer polls — they only push notifications —
+so they deliver no data at all unless they stay connected.
+
+Earlier versions offered a rotating model, where devices shared one connection
+slot in turn. It was a workaround for controllers that could not hold several
+links, and it was removed with the move to bleak. The two failures that motivated
+it were fixed at their root instead: concurrent connection establishment, now
+serialised behind a single lock so only one LE Create Connection is ever in
+flight, and 2.4 GHz coexistence, addressed host-side (see below). If you meet an
+adapter that genuinely cannot hold your devices, that is worth reporting — the
+fix belongs in the connection layer rather than in a per-device option.
 
 ## Optional host connection-parameter tuning
 
