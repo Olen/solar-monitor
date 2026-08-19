@@ -61,15 +61,31 @@ Also
 * solar-monitor.service - A systemd service-description for auto-starting the service
 * solar-monitor.ini.dist  Configuration-file. To be modified and renamed to solar-monitor.ini
 
-Copy solar-monitor.ini.dist to solar-monitor.ini, and add the correct mac addresses to your BLE devices (NOT your mobile phone with the app, but the actual battery/bluetooth adapter)
+Install the code somewhere the service user cannot write, keep the config
+separate, and run as a dedicated user:
 
-Copy solar-monitor.service to /etc/systemd/system/ and run
+```sh
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin solar-monitor
+
+sudo install -d -o root -g root /opt/solar-monitor
+sudo cp -r *.py plugins /opt/solar-monitor/
+
+sudo install -d -o root -g solar-monitor -m 750 /etc/solar-monitor
+sudo install -o root -g solar-monitor -m 640 solar-monitor.ini /etc/solar-monitor/
 ```
-systemctl daemon-reload
-systemctl enable solar-monitor
-systemctl start solar-monitor
+
+The ini holds your MQTT password and datalogger token, so it is readable by the
+service and nobody else. The shipped unit expects exactly these paths.
+
+```sh
+sudo cp solar-monitor.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now solar-monitor
 ```
-The systemd unit file might need some adjustments to point to the right scripts
+
+BlueZ is reached over the system D-Bus, which the policy shipped with bluez
+allows for any user, so the service needs no capabilities and no group
+membership.
 
 Alternatively just run `solar-monitor.py` in something like termux or screen (might require root privileges to access bluetooth directly)
 
