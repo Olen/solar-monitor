@@ -23,7 +23,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
     && rm -rf /wheels requirements.txt
 
+# Match the uid that owns the mounted config and log directories on the host.
+ARG UID=1000
+ARG GID=1000
+RUN groupadd --gid "$GID" solar \
+    && useradd --uid "$UID" --gid "$GID" --no-create-home --shell /usr/sbin/nologin solar \
+    && install -d -o "$UID" -g "$GID" /solar-monitor/solar-monitor
+
 WORKDIR /solar-monitor
-COPY . .
+COPY --chown=$UID:$GID . .
+USER solar
 
 ENTRYPOINT [ "python", "-u", "solar-monitor.py" ]
