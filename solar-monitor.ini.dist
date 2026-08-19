@@ -64,9 +64,18 @@ refresh = 10
 
 [mqtt]
 # Address to the mqtt broker
-broker = mqtt.server.addr 
+broker = mqtt.server.addr
+# Port. 1883 plain, 8883 for TLS.
+port = 1883
 # All topics are prefixed by this prefix
 # E.g. "solar/battery_1/voltage"
-prefix = solar                
+prefix = solar
+# Credentials, if the broker requires them. This file then holds a secret:
+# chmod 600 it, or 640 owned by the group the service runs as.
+# username = solar-monitor
+# password = 
+# Client id and Home Assistant device suffix. Defaults to the machine hostname;
+# set it when several machines publish to one broker.
+# hostname = 
 
 
