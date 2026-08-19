@@ -148,6 +148,9 @@ I found this after placing the battery outdoors for a few hours, and noticing th
 
 But it is hopefully a simple guide to get you started.  
 
+Once you know the UUIDs and can read the values, [PLUGINS.md](PLUGINS.md)
+describes how to turn that into a plugin.
+
 Good luck.
 
 

@@ -20,7 +20,23 @@ Typically, you can have a hierarchy like
 
 We then *subscribe to* or *write to* one or more of these characteristics.
 
-These UUIDs can be found either by reverse engineering the original app, by sniffing the packets going over the bluetooth connection from the original app, or by using various tools to connect directly to the device with bluetooth and poke around until you find something of interest.  But note that many devices need some kind of "init" before they send any data.  The easiest is probably to run e.g. wireshark to sniff the packets going over the air, and try to figure out what happens.
+Finding these UUIDs, and working out what the bytes mean, is a job of its own:
+[REVERSE-ENGNEER.md](REVERSE-ENGNEER.md) walks through sniffing the vendor app
+with Wireshark. Note that many devices send nothing at all until they receive
+some kind of init.
+
+The shipped plugins are a useful recognition aid. A device advertising one of
+these families probably speaks something close to a protocol already supported:
+
+| Service | Notify characteristic | Used by |
+|---|---|---|
+| `0000ffe0-…` | `0000ffe4-…` | Meritsun, Topband |
+| `0000fff0-…` | `0000fff1-…` | SolarLink (SRNE), RenogyBatt |
+| `306b0001-…` | `306b0002/0003/0004-…` | VEDirect |
+| `6e400001-…` (Nordic UART) | `6e400003-…` | Hacien |
+
+Nordic UART in particular is a generic serial-over-BLE service, so it tells you
+the transport but nothing about the protocol carried over it.
 
 ## Config
 The Config class defines some parameters for the plugin:
@@ -29,7 +45,7 @@ The Config class defines some parameters for the plugin:
 - `SEND_ACK` - Some devices require that an "ack" is returned for all received packets.  If this parameter is set to `True` the `Util` class needs a function `ackData` that generates the ack packets
 - `NEED_POLLING` - Some devices require active polling, while others will just send a continous stream of updates.  If this is set to `True`, the device will be polled every second for updates
 - `NOTIFY_SERVICE_UUID` - The UUID that contains the notifications
-- `NOTIFY_CHAR_UUID` - The characteristics within the `NOTIFY_SERVICE_UUID` that we will subscribe to.  Can be a single UUID or a list of UUIDs
+- `NOTIFY_CHAR_UUID` - The characteristics within the `NOTIFY_SERVICE_UUID` that we will subscribe to.  Can be a single UUID or a list of UUIDs.  Every characteristic in the list is subscribed to: VEDirect spreads its data across three, and subscribing to one of them yields no data and a link the device drops
 - `WRITE_SERVICE_UUID`- The service UUID containing the characteristics we will send write requests to 
 - `WRITE_CHAR_UUID_POLLING` - The charactersitcs UUID we send polling requests, acks etc. to
 - `WRITE_CHAR_UUID_COMMANDS` - The characteristics UUID we send data to for commands.  E.g turing power on or off on a regulator etc.
@@ -58,3 +74,50 @@ Some devices accept commands, such as turning power on and off on an inverter.  
 The function must return a *list* of packets that should be sent to the device.
 
 
+### Payloads
+
+Everything written to the device — from `pollRequest()`, `ackData()` and
+`cmdRequest()` — must be bytes-like: `bytes` or `bytearray`. A plain list of
+ints is coerced on the way out, but returning bytes directly says what you mean.
+
+
+## Decoding helpers
+
+Three modules cover the wire formats the shipped plugins use. A device speaking
+something similar should use them rather than growing its own copy:
+
+- `modbus.py` — `bytes_to_int()`, `high_byte()`, `low_byte()`,
+  `validate_frame()` (length, function code and CRC-16/MODBUS) and
+  `ack_payload()`. Used by `SolarLink` and `RenogyBatt`.
+- `asciihex.py` — `field_value()` for ASCII-hex fields written least significant
+  pair first, and `checksum_matches()` for the 16-bit additive checksum. Used by
+  `Meritsun` and `Topband`.
+- `codec.py` — `to_signed()` and the two's-complement wrap constants, for signed
+  readings in any format.
+
+
+## Capturing what your plugin receives
+
+Wireshark shows what the *vendor app* exchanges. Once your plugin connects, you
+want the bytes your own code receives, which is a different question — framing
+can differ between what the app negotiates and what you get.
+
+The `Meritsun` and `Hacien` plugins write every notification to
+`/tmp/<device-alias>.log` when `debug = True` is set in `[monitor]`:
+
+```python
+if self.PowerDevice.config.getboolean('monitor', 'debug', fallback=False):
+    with open(f"/tmp/{self.PowerDevice.alias()}.log", 'a') as debugfile:
+        debugfile.write(f"{datetime.now()} <- {data.hex()}\n")
+```
+
+Each line is one notification, timestamped, exactly as the parser sees it. These
+files grow by a few MB per minute per device, so turn debug off when finished.
+
+
+## Testing
+
+Captured notifications make a test that needs no hardware: replay them and
+assert the decoded values. `tests/test_meritsun_parser.py` does this with six
+real notifications and pins voltage, SOC, temperature and capacity — enough to
+catch a framing change without a battery on the desk.
