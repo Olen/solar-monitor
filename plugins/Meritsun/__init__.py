@@ -60,6 +60,8 @@ class Util():
         self.PowerDevice = power_device
         self.end = 0
         self.prev_values = []
+        self._frames_ok = 0
+        self._frames_bad = 0
 
     def notificationUpdate(self, data, char):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
@@ -130,11 +132,33 @@ class Util():
         self.Revindex = min(len(packet), 121)
         self.end = self._frameEnd(packet)
         if self.end < 60 or not asciihex.checksum_matches(buf, self.end):
+            self._frames_bad += 1
             logging.debug("[%s] frame rejected: len=%d end=%d",
                           self.PowerDevice.alias(), len(packet), self.end)
             return False
+        self._frames_ok += 1
         return self.handleMessage(buf[1:self.Revindex], full=len(packet) <= 130)
 
+    def frame_health(self):
+        """Frames accepted and rejected since the last call."""
+        counts = (self._frames_ok, self._frames_bad)
+        self._frames_ok = self._frames_bad = 0
+        return counts
+
+
+    def _readField(self, message, start, end):
+        """Field value, or None when its characters are not ASCII-hex.
+
+        A byte corrupted onto a "00" pair contributes 0 to the additive checksum
+        whether it parses or not, so the checksum cannot see it and the field
+        silently reads 0. Only the affected field is dropped; the rest of the
+        frame is still good.
+        """
+        if end >= len(message) or not all(
+                0x30 <= char <= 0x39 or 0x41 <= char <= 0x46
+                for char in message[start:end + 1]):
+            return None
+        return asciihex.field_value(message, start, end)
 
     def handleMessage(self, message, full=True):
         # Accepts a list of hex-characters, and returns the human readable values into the powerDevice object
@@ -145,23 +169,45 @@ class Util():
 
         # A real pack always reports a nonzero pack voltage; a frame decoding it as
         # 0 is not a data frame at all -- a cheap backstop behind the checksum.
-        mvoltage = asciihex.field_value(message, 0, 7)
-        if mvoltage < 1000:
+        mvoltage = self._readField(message, 0, 7)
+        if mvoltage is None or mvoltage < 1000:
             return False
 
-        self.PowerDevice.entities.msg = message
         # Scalar fields occupy the first 38 bytes of the frame. They sit at the
         # head, before the region the duplicated fragments corrupt, so they are
         # decoded on every framed packet; each entity setter validates its own
         # value against physical bounds and rejects any that slipped through.
+        mcurrent = self._readField(message, 8, 15)
+        mcapacity = self._readField(message, 16, 23)
+        charge_cycles = self._readField(message, 24, 27)
+        soc = self._readField(message, 28, 31)
+        temperature = self._readField(message, 32, 35)
+        status = self._readField(message, 36, 37)
+
+        # A run of ASCII '0' sums to zero and the checksum field it lands on
+        # reads zero too, so the frame checksum accepts it. A frame carrying a
+        # voltage and nothing else is that run, not a reading.
+        if not any(value for value in
+                   (mcurrent, mcapacity, charge_cycles, soc, temperature, status)
+                   if value is not None):
+            logging.debug("[%s] frame rejected: only the voltage is set",
+                          self.PowerDevice.alias())
+            return False
+
+        self.PowerDevice.entities.msg = message
         self.PowerDevice.entities.mvoltage = mvoltage
-        mcurrent = to_signed(asciihex.field_value(message, 8, 15), UINT32_WRAP, INT32_MAX)
-        self.PowerDevice.entities.mcurrent = mcurrent
-        self.PowerDevice.entities.mcapacity = asciihex.field_value(message, 16, 23)
-        self.PowerDevice.entities.charge_cycles = asciihex.field_value(message, 24, 27)
-        self.PowerDevice.entities.soc = asciihex.field_value(message, 28, 31)
-        self.PowerDevice.entities.temperature = asciihex.field_value(message, 32, 35)
-        self.PowerDevice.entities.status = asciihex.field_value(message, 36, 37)
+        if mcurrent is not None:
+            self.PowerDevice.entities.mcurrent = to_signed(mcurrent, UINT32_WRAP, INT32_MAX)
+        if mcapacity is not None:
+            self.PowerDevice.entities.mcapacity = mcapacity
+        if charge_cycles is not None:
+            self.PowerDevice.entities.charge_cycles = charge_cycles
+        if soc is not None:
+            self.PowerDevice.entities.soc = soc
+        if temperature is not None:
+            self.PowerDevice.entities.temperature = temperature
+        if status is not None:
+            self.PowerDevice.entities.status = status
         # Per-cell voltages start past byte 40 -- exactly the region fragment
         # duplication corrupts. Only trust them on non-bloated ("full") frames;
         # a bloated frame's scalar head is fine but its cells are garbage.

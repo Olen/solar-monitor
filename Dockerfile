@@ -12,10 +12,19 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 FROM python:3.11-slim-bookworm
 
-# bluez provides bluetoothctl, which ble.set_trusted shells out to. bleak
-# reaches D-Bus through pure-python dbus-fast and needs nothing else.
+# bluez provides bluetoothctl, which ble.set_trusted shells out to, and hcitool,
+# which hci.py uses to set the connection interval. bleak reaches D-Bus through
+# pure-python dbus-fast and needs nothing else.
+#
+# hcitool opens a raw HCI socket, so it needs CAP_NET_RAW/CAP_NET_ADMIN. The file
+# capability keeps that to the one binary: the daemon still runs unprivileged.
+# The container must also be started with those capabilities available -- see
+# cap_add in docker-compose.yaml.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bluez \
+    && apt-get install -y --no-install-recommends bluez libcap2-bin \
+    && setcap cap_net_raw,cap_net_admin+eip /usr/bin/hcitool \
+    && apt-get purge -y libcap2-bin \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels

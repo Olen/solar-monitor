@@ -1,19 +1,65 @@
 """Asyncio BLE transport (bleak) for solar-monitor.
 
-Replaces the abandoned `gatt` library. One asyncio loop (owned by BleManager,
-Task 3) runs in a daemon thread; each device gets one `maintain_device` task.
-bleak uses AcquireNotify for notifications, which — unlike gatt's dbus-signal
-StartNotify — keeps up with high-rate notifiers (the Meritsun batteries).
+One asyncio loop (owned by BleManager) runs in a daemon thread; each device gets
+one `maintain_device` task.
+
+bleak subscribes with BlueZ's StartNotify. Its AcquireNotify path delivers over
+a file descriptor instead of D-Bus, which avoids a known BlueZ notification loss
+(bleak#1343), but measured against the Meritsun packs it makes no difference:
+what those packs lose is lost below D-Bus, at the connection interval. That is
+what `connection_interval` addresses.
 """
 import asyncio
 import logging
 
+import hci
 from connection import backoff_seconds
+
+# How much of the hold loop passes between link-quality checks, and what counts
+# as a healthy link. A link at the interval we ask for accepts ~85% of framed
+# packets; one the peripheral has renegotiated slow accepts under 5%.
+VERIFY_SECONDS = 60.0
+MIN_FRAMES_TO_JUDGE = 20
+MIN_ACCEPT_RATIO = 0.3
+
+
+def _assert_connection_interval(dev):
+    """Ask for the configured interval on a link that has just come up.
+
+    A peripheral may renegotiate the interval a few seconds after connecting,
+    and BlueZ grants it. The packs do this once per connection, so asserting on
+    connect is enough; `_verify_link` covers the rest.
+    """
+    interval = getattr(dev, "connection_interval", None)
+    if interval:
+        hci.set_connection_interval(dev.mac_address, *interval)
+
+
+def _verify_link(dev):
+    """Re-assert the interval when the data says the link has gone slow.
+
+    No HCI command reads the current interval back, but a renegotiated link is
+    unmistakable in the frames: nearly all of them fail the checksum.
+    """
+    interval = getattr(dev, "connection_interval", None)
+    if not interval:
+        return
+    health = dev.frame_health()
+    if not health:
+        return
+    accepted, rejected = health
+    total = accepted + rejected
+    if total < MIN_FRAMES_TO_JUDGE or accepted >= total * MIN_ACCEPT_RATIO:
+        return
+    logging.warning("[%s] %d of %d frames accepted; re-asserting %g-%g ms",
+                    dev.logger_name, accepted, total, *interval)
+    hci.set_connection_interval(dev.mac_address, *interval)
 
 
 async def _hold(dev, client, stop_event, poll_interval, sleep):
     """Hold a resolved connection, polling if the device needs it, until the
     link drops or shutdown is requested."""
+    since_verify = 0.0
     while not stop_event.is_set() and client.is_connected:
         if dev.need_polling and dev.device_write_characteristic_polling:
             data = dev.get_poll_data()
@@ -32,6 +78,10 @@ async def _hold(dev, client, stop_event, poll_interval, sleep):
                     logging.warning("[%s] poll write failed: %r", dev.logger_name, e)
                     break
         await sleep(poll_interval)
+        since_verify += poll_interval
+        if since_verify >= VERIFY_SECONDS:
+            since_verify = 0.0
+            _verify_link(dev)
 
 
 async def maintain_device(dev, connect_lock, client_factory, stop_event,
@@ -63,6 +113,7 @@ async def maintain_device(dev, connect_lock, client_factory, stop_event,
                 for uuid in (notify_uuids or []):
                     await client.start_notify(uuid, dev.notify_callback)
                 connected = True
+            _assert_connection_interval(dev)
             await _hold(dev, client, stop_event, poll_interval, sleep)
         except Exception as e:
             logging.error("[%s] connection error: %r", dev.logger_name, e)

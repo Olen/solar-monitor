@@ -5,6 +5,8 @@ import asyncio
 
 import logging
 
+import hci
+
 from connection import write_with_retry
 from supervisor import try_put
 
@@ -82,9 +84,21 @@ class SolarDevice:
             self.entities = PowerDevice(parent=self)
         self.entities.apply_limit_overrides(config, logger_name)
         self.util = self.module.Util(self)
+        self.connection_interval = hci.parse_interval(
+            config.get(logger_name, 'connection_interval', fallback=None)
+            if config else None)
 
     def alias(self):
         return self._alias
+
+    def frame_health(self):
+        """Frames accepted and rejected since the last call, or None.
+
+        The plugin counts them; a link whose interval has been renegotiated
+        slow rejects nearly everything, which no HCI command can report.
+        """
+        health = getattr(self.util, "frame_health", None)
+        return health() if health else None
 
     def set_alias(self, name):
         if name:
@@ -243,7 +257,7 @@ class PowerDevice():
         }
         self._mcapacity = {
             'val': 0,
-            'min': 0,
+            'min': 1,
             'max': 250000,
             'maxdiff': 20000
         }
@@ -791,7 +805,7 @@ class BatteryDevice(PowerDevice):
         }
         self._charge_cycles = {
             'val': 0,
-            'min': 0,
+            'min': 1,
             'max': 10000,
             'maxdiff': 1
         }

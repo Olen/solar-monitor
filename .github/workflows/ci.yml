@@ -19,6 +19,6 @@ jobs:
         # runtime deps imported at module level by code under test.
         run: pip install pytest requests python-dateutil
       - name: Byte-compile (syntax gate)
-        run: python -m py_compile monitor_app.py solar-monitor.py supervisor.py solardevice.py datalogger.py duallog.py ble.py connection.py codec.py modbus.py asciihex.py
+        run: python -m py_compile monitor_app.py solar-monitor.py supervisor.py solardevice.py datalogger.py duallog.py ble.py connection.py codec.py modbus.py asciihex.py hci.py
       - name: Run tests
         run: python -m pytest -q

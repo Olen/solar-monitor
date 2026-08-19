@@ -29,6 +29,11 @@ mac = 11:11:11:11:11:11
 [battery_1]
 type = Meritsun
 mac = 11:11:11:11:11:11
+# These packs ask for a 195 ms connection interval once connected, then lose most
+# of every frame because they push ~13 notifications/second into ~5 transmit
+# opportunities. Asking for a fast interval after each connect fixes it. In
+# milliseconds; needs the capabilities described in docker-compose.yaml.
+# connection_interval = 15-30
 
 [battery_2]
 type = Meritsun

@@ -6,6 +6,11 @@ services:
       network: host
     container_name: solar-monitor
     network_mode: host
+    # hcitool needs these to set the connection interval; the file capability in
+    # the image keeps them to that binary. See `connection_interval` in the ini.
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
     volumes:
       - /var/run/dbus:/var/run/dbus
       - ~/solar-monitor/solar-monitor.ini:/solar-monitor/solar-monitor.ini
