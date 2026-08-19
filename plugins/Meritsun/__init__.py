@@ -53,6 +53,8 @@ class Util():
         self.EOI = 3
         self.START_VAL = 146
         self.END_VAL = 12
+        self.ZERO_CHAR = 0x30
+        self.CONTENT_CHARS = 112   # frame content between the marker and the padding
         self.RecvDataType = self.SOI
         self.RevBuf = [None] * 122
         self.Revindex = 0
@@ -120,6 +122,29 @@ class Util():
                 end = i + 1
         return end
 
+    def _repairZeroFillGap(self, packet):
+        """Rebuild a short frame whose missing bytes fell in the trailing zero run.
+
+        The pack drops chunks of a frame in transit. Between the cell slots and
+        the checksum the frame is a run of '0' characters, so a chunk lost there
+        is restored by padding the run back to full length; the checksum
+        confirms the result. A chunk lost from the fields themselves is gone.
+        """
+        pad = next((i for i in range(1, len(packet)) if packet[i] == self.END_VAL), None)
+        if pad is None:
+            return None
+        content = packet[1:pad]
+        missing = self.CONTENT_CHARS - len(content)
+        if missing <= 0 or len(content) < 40:
+            return None
+        head, checksum = content[:-4], content[-4:]
+        if any(char != self.ZERO_CHAR for char in head[-4:]):
+            return None
+        frame = [0] + list(head) + [self.ZERO_CHAR] * missing + list(checksum)
+        if asciihex.checksum_matches(frame, self.CONTENT_CHARS + 1):
+            return frame
+        return None
+
     def _handleDataPacket(self, packet):
         # The protocol checksum is the only invariant that holds across pack
         # states; field values that look constant are not.
@@ -129,11 +154,19 @@ class Util():
         self.RevBuf = buf
         self.Revindex = min(len(packet), 121)
         self.end = self._frameEnd(packet)
-        if self.end < 60 or not asciihex.checksum_matches(buf, self.end):
-            logging.debug("[%s] frame rejected: len=%d end=%d",
-                          self.PowerDevice.alias(), len(packet), self.end)
-            return False
-        return self.handleMessage(buf[1:self.Revindex], full=len(packet) <= 130)
+        if self.end >= 60 and asciihex.checksum_matches(buf, self.end):
+            return self.handleMessage(buf[1:self.Revindex], full=len(packet) <= 130)
+
+        repaired = self._repairZeroFillGap(packet)
+        if repaired is not None:
+            self.RevBuf = repaired + [0] * (122 - len(repaired))
+            self.Revindex = self.CONTENT_CHARS + 1
+            self.end = self.CONTENT_CHARS + 1
+            return self.handleMessage(repaired[1:self.CONTENT_CHARS + 1], full=True)
+
+        logging.debug("[%s] frame rejected: len=%d end=%d",
+                      self.PowerDevice.alias(), len(packet), self.end)
+        return False
 
 
     def handleMessage(self, message, full=True):

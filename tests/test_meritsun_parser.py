@@ -79,3 +79,49 @@ def test_fragments_are_rejected(util):
     """A truncated frame must not decode: the checksum is the only gate."""
     truncated = [f[:20] for f in CAPTURED_FRAME]
     assert not any(feed(util, truncated))
+
+
+# A frame that lost bytes from its trailing zero run, captured 2026-08-19. The
+# 0x70 in the zero fill is the same packs' byte corruption; it decodes as 0.
+SHORT_FRAME_GAP_IN_ZERO_FILL = [
+    "c937383335303030303030303030303030413039",
+    "3230313030334630303633303033303042383038",
+    "3838374236334530453131304431353044313430",
+    "4430303030303030303030303030303030303030",
+    "3030303030303030703030303030303030303030",
+    "3030303030303030303541460c0c0c0c0c0c0c0c",
+    "c9",
+]
+
+# The same pack, but the loss took part of the field region: unrecoverable.
+SHORT_FRAME_GAP_IN_FIELDS = [
+    "9237413335203030303030303030303030413039",
+    "3230313030334630303633303033303042383038",
+    "3838374236334530453132304431353044313530",
+    "4430303030303030303030303030303030303030",
+    "3030303030303030303030303030303030303030",
+    "3030303030303030301088f8c9",
+]
+
+
+def test_gap_in_the_zero_fill_is_repaired(util):
+    """Bytes lost from the run of '0' are restorable: the checksum proves it."""
+    assert any(feed(util, SHORT_FRAME_GAP_IN_ZERO_FILL))
+    values = util.PowerDevice.entities.values
+    assert values["mvoltage"] == 13688
+    assert values["soc"] == 99
+    assert values["temperature"] == 2864
+    assert values["mcapacity"] == 103072
+    assert values["charge_cycles"] == 63
+
+
+def test_gap_in_the_field_region_is_not_repaired(util):
+    """Only the zero fill can be rebuilt; a lost field must not be invented."""
+    assert not any(feed(util, SHORT_FRAME_GAP_IN_FIELDS))
+
+
+def test_repair_keeps_the_checksum_as_the_gate(util):
+    """A short frame whose checksum cannot be satisfied stays rejected."""
+    frames = list(SHORT_FRAME_GAP_IN_ZERO_FILL)
+    frames[0] = "c937383335303030303030303030303031413039"   # one field altered
+    assert not any(feed(util, frames))
