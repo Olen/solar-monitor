@@ -7,6 +7,24 @@ Something is documented, something can be found in other github-repos where some
 
 But after working woth some of the devices for a while, you learn what to look for, and how to interpret the different data.
 
+## Check whether someone has already done it
+
+Before sniffing anything, look for the device in the published corpora:
+
+- [aiobmsble](https://github.com/patman15/aiobmsble) — 43 BMS protocols, one
+  module each, with the service and characteristic UUIDs at the top of every file
+- [dbus-serialbattery](https://github.com/mr-manuel/venus-os_dbus-serialbattery)
+- [syssi's ESPHome components](https://github.com/syssi) — JBD, JK, Seplos and more
+
+Search on the advertised device name and the service UUID. Many of these packs
+are rebadges, and a plugin for the original will usually work unchanged.
+
+Victron is a special case. Its devices broadcast **Instant Readout** in the
+advertisement — manufacturer ID `0x02E1`, record type `0x10`, AES-encrypted with
+a per-device key you can read out of VictronConnect. No connection, no protocol
+to work out; see [victron-ble](https://github.com/keshavdv/victron-ble).
+
+
 ## Requirements
 The easiest way to start is to use an Android phone (maybe an iPhone, I have no idea how those work), the app for the device you want to reverse engieer, a computer with Wireshark and a USB cable for your phone.
 
@@ -37,6 +55,12 @@ Start by opening the bluetooth-dump in Wireshark.
 
 Create a filter with `bluetooth.addr=xx:xx:xx:xx:xx` (the mac-address of your device)
 
+Before a device can send anything, the app has to subscribe, and that
+subscription is in the dump: a write of `0100` to a Client Characteristic
+Configuration descriptor (UUID `2902`). Find those writes first — each one names
+a handle that will carry notifications, which beats working backwards from the
+traffic. `0200` means indications instead, which are acknowledged.
+
 Now you take out your notes and start looking for patterns.
 
 First you start looking whether there are typical "Send Write Command", followed by one or more "Rcvd Handle Value Notification", or if there are just a bunch of "Rcvd Handle Value Notification"
@@ -46,7 +70,7 @@ First you start looking whether there are typical "Send Write Command", followed
 
 In the "Value Notifications", you can find the data from the device.  In Wireshark you will typically see the data as hex-values, use a hex-calculator (can easily be found online if you dont have one), and try out the different values.
 
-If you have multiple Value Notificatons following each other within a short timeframe, or just after a "Write Command", they probably belong together, so you should add them together as one string.
+If you have multiple Value Notificatons following each other within a short timeframe, or just after a "Write Command", they probably belong together, so you should add them together as one string.  A notification holds at most ATT_MTU - 3 bytes, 20 by default, so any frame longer than that is split no matter what the protocol looks like.
 
 For example, if you have received the following hex stream: `01034c0d010d050d030d01ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee49ee490d050d0100020001000405338ad0` split it up into bytes:
 
@@ -135,6 +159,25 @@ And that means that `30D4` = 12500, and the total capacity of the battery is 125
 Just after those, we have a `06` and the app did report 6 charge cycles.  Lets not this down and keep an eye on it after a few charges.
 
 And then just 0 until the checksum.  
+
+### Known protocol families
+
+Recognising the header beats decoding byte by byte:
+
+| Family | Tell |
+|---|---|
+| Modbus RTU | `01 03 <len> …`, ending in a byte-swapped CRC-16/MODBUS |
+| JBD / Xiaoxiang / Overkill Solar | `DD A5 <cmd> <len> … 77` |
+| Jikong (JK) | `55 AA EB 90` in responses, `AA 55 90 EB` in commands |
+| Daly | `D2 03 <len> …` over BLE, Modbus CRC |
+| Seplos v2, Pylontech console | ASCII between `7E` and `0D`, CRC-XMODEM |
+| PACE | `9A` … `9D` |
+| Meritsun, Topband, Ective | marker byte, then ASCII-hex, little-endian fields, 16-bit additive checksum |
+
+The first two bytes and the checksum usually settle it. Once CRC-16/MODBUS
+validates, expect the rest of the Modbus conventions too: function code, byte
+count, big-endian 16-bit registers.
+
 
 ### Summary
 

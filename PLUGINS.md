@@ -18,6 +18,11 @@ Typically, you can have a hierarchy like
   - Characteristics: 0000ffe**3**-0000-1000-8000-00805f9b34fb 
   - Characteristics: 0000ffe**4**-0000-1000-8000-00805f9b34fb 
 
+Short UUIDs are shorthand for the Bluetooth Base UUID
+`0000xxxx-0000-1000-8000-00805f9b34fb`, so `ffe0` and the 128-bit form above
+name the same service. Vendor-defined UUIDs sit outside that base, and have no
+short form: Victron uses `306b0001-…`, Nordic `6e400001-…`.
+
 We then *subscribe to* or *write to* one or more of these characteristics.
 
 Finding these UUIDs, and working out what the bytes mean, is a job of its own:
@@ -25,8 +30,22 @@ Finding these UUIDs, and working out what the bytes mean, is a job of its own:
 with Wireshark. Note that many devices send nothing at all until they receive
 some kind of init.
 
-The shipped plugins are a useful recognition aid. A device advertising one of
-these families probably speaks something close to a protocol already supported:
+## Read the standard services first
+
+Two SIG-assigned services need no reverse engineering:
+
+- `0000180f-…` **Battery Service** — characteristic `00002a19-…` is the state of
+  charge, a single byte, 0–100.
+- `0000180a-…` **Device Information** — `00002a29-…` manufacturer, `00002a24-…`
+  model, `00002a26-…` firmware revision, all plain strings.
+
+A pack that exposes `180f` gives you SOC for free, and `180a` tells you which
+protocol family to expect.
+
+
+## A service UUID identifies the module, not the protocol
+
+The shipped plugins use these:
 
 | Service | Notify characteristic | Used by |
 |---|---|---|
@@ -35,8 +54,18 @@ these families probably speaks something close to a protocol already supported:
 | `306b0001-…` | `306b0002/0003/0004-…` | VEDirect |
 | `6e400001-…` (Nordic UART) | `6e400003-…` | Hacien |
 
-Nordic UART in particular is a generic serial-over-BLE service, so it tells you
-the transport but nothing about the protocol carried over it.
+A match narrows the transport, not the protocol. `0000ffe0-…`/`0000ffe1-…` is
+the factory default of the HM-10 (TI CC2541) serial module, changeable by AT
+command and left alone by most vendors; none of `ffe0`, `fff0`, `ff00` or `ffd0`
+is SIG-assigned. Of the 43 protocols decoded in
+[aiobmsble](https://github.com/patman15/aiobmsble), a dozen mutually
+incompatible ones sit on `ffe0` and another dozen on `fff0`. Nordic UART and
+Microchip/ISSC transparent UART (`49535343-…`) are generic serial-over-BLE
+services in the same way.
+
+The vendor is sometimes in the UUID itself — hex-decode the leading groups.
+`49535343` is ASCII `ISSC`, `57616c6b697a` is `Walkiz`, and Felicity's
+`49535458`/`49535258` are `ISTX`/`ISRX`.
 
 ## Config
 The Config class defines some parameters for the plugin:
@@ -61,6 +90,12 @@ __init__() of the class expects a `PowerDevice` (an object defined in `solardevi
 
 ### Updates
 When we recieve an update, the class function `notificationUpdate(data, char)` is called with the raw data and the UUID of the characteristic we recieved the data from.  This function is then responsible for parsing the data and will then update the `PowerDevice` object.  The function should return True if the message was understood and handled, and False if it was not.
+
+A notification carries at most ATT_MTU − 3 bytes, 20 by default. Frames longer
+than that arrive split across several calls, and one call can hold the tail of
+one frame and the head of the next, so anything longer needs reassembly:
+`Meritsun` buffers the stream and re-syncs on its marker bytes rather than
+trusting notification boundaries.
 
 ### Ack
 The class function `ackData(data)` is required if the device expects an ack for each notification it sends. This function must generate and return a valid "ack-packet" for the received `data`
@@ -91,7 +126,11 @@ something similar should use them rather than growing its own copy:
   `ack_payload()`. Used by `SolarLink` and `RenogyBatt`.
 - `asciihex.py` — `field_value()` for ASCII-hex fields written least significant
   pair first, and `checksum_matches()` for the 16-bit additive checksum. Used by
-  `Meritsun` and `Topband`.
+  `Meritsun` and `Topband`. The same family is documented independently as
+  Topband/Ective in
+  [aiobmsble](https://github.com/patman15/aiobmsble/blob/main/aiobmsble/bms/topband_bms.py)
+  — different frame length and marker bytes, same ASCII-hex payload,
+  little-endian fields, additive checksum and deci-Kelvin temperature.
 - `codec.py` — `to_signed()` and the two's-complement wrap constants, for signed
   readings in any format.
 
