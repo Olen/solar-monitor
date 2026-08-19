@@ -41,14 +41,6 @@ class Util():
 
 
 
-    def getValue(self, buf, start, end):
-        return asciihex.field_value(buf, start, end)
-
-
-    def validateChecksum(self, buf):
-        return asciihex.checksum_matches(buf, self.end)
-
-
     def notificationUpdate(self, data, char):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
         cmdData = ""
@@ -74,7 +66,7 @@ class Util():
                         if self.Revindex == 114:
                             self.RecvDataType = self.EOI
                 elif self.RecvDataType == self.EOI:
-                    if self.validateChecksum(self.RevBuf):
+                    if asciihex.checksum_matches(self.RevBuf, self.end):
                         cmdData = self.RevBuf[1:self.Revindex]
                         self.Revindex = 0
                         self.end = 0
@@ -104,19 +96,19 @@ class Util():
 
         self.PowerDevice.entities.msg = message
         # if self.DeviceType == '12V100Ah-027':
-        self.PowerDevice.entities.mvoltage = self.getValue(message, 0, 7)
-        logging.debug("mVoltage: {}".format(self.getValue(message, 0, 7)))
-        mcurrent = to_signed(self.getValue(message, 8, 15), UINT32_WRAP, INT32_MAX)
+        self.PowerDevice.entities.mvoltage = asciihex.field_value(message, 0, 7)
+        logging.debug("mVoltage: {}".format(asciihex.field_value(message, 0, 7)))
+        mcurrent = to_signed(asciihex.field_value(message, 8, 15), UINT32_WRAP, INT32_MAX)
         self.PowerDevice.entities.mcurrent = mcurrent
-        self.PowerDevice.entities.mcapacity = self.getValue(message, 16, 23)
-        self.PowerDevice.entities.charge_cycles = self.getValue(message, 24, 27)
-        self.PowerDevice.entities.soc = self.getValue(message, 28, 31)
-        self.PowerDevice.entities.temperature = self.getValue(message, 32, 35)
-        self.PowerDevice.entities.status = self.getValue(message, 36, 37)
-        self.PowerDevice.entities.afestatus = self.getValue(message, 40, 41)
+        self.PowerDevice.entities.mcapacity = asciihex.field_value(message, 16, 23)
+        self.PowerDevice.entities.charge_cycles = asciihex.field_value(message, 24, 27)
+        self.PowerDevice.entities.soc = asciihex.field_value(message, 28, 31)
+        self.PowerDevice.entities.temperature = asciihex.field_value(message, 32, 35)
+        self.PowerDevice.entities.status = asciihex.field_value(message, 36, 37)
+        self.PowerDevice.entities.afestatus = asciihex.field_value(message, 40, 41)
         i = 0
         while i < 16:
-            self.PowerDevice.entities.cell_mvoltage = (i + 1, self.getValue(message, (i * 4) + 44, (i * 4) + 47))
+            self.PowerDevice.entities.cell_mvoltage = (i + 1, asciihex.field_value(message, (i * 4) + 44, (i * 4) + 47))
             i = i + 1
 
         return True

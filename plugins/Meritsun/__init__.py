@@ -61,16 +61,6 @@ class Util():
         self.end = 0
         self.prev_values = []
 
-    def getValue(self, buf, start, end):
-        return asciihex.field_value(buf, start, end)
-
-
-
-
-    def validateChecksum(self, buf):
-        return asciihex.checksum_matches(buf, self.end)
-
-
     def notificationUpdate(self, data, char):
         # Gets the binary data from the BLE-device and converts it to a list of hex-values
         if self.PowerDevice.config.getboolean('monitor', 'debug', fallback=False):
@@ -146,7 +136,7 @@ class Util():
         self.RevBuf = buf
         self.Revindex = min(len(packet), 121)
         self.end = self._frameEnd(packet)
-        if self.end < 60 or not self.validateChecksum(buf):
+        if self.end < 60 or not asciihex.checksum_matches(buf, self.end):
             logging.debug("[%s] frame rejected: len=%d end=%d",
                           self.PowerDevice.alias(), len(packet), self.end)
             return False
@@ -162,7 +152,7 @@ class Util():
 
         # A real pack always reports a nonzero pack voltage; a frame decoding it as
         # 0 is not a data frame at all -- a cheap backstop behind the checksum.
-        mvoltage = self.getValue(message, 0, 7)
+        mvoltage = asciihex.field_value(message, 0, 7)
         if mvoltage < 1000:
             return False
 
@@ -172,18 +162,18 @@ class Util():
         # decoded on every framed packet; each entity setter validates its own
         # value against physical bounds and rejects any that slipped through.
         self.PowerDevice.entities.mvoltage = mvoltage
-        mcurrent = to_signed(self.getValue(message, 8, 15), UINT32_WRAP, INT32_MAX)
+        mcurrent = to_signed(asciihex.field_value(message, 8, 15), UINT32_WRAP, INT32_MAX)
         self.PowerDevice.entities.mcurrent = mcurrent
-        self.PowerDevice.entities.mcapacity = self.getValue(message, 16, 23)
-        self.PowerDevice.entities.charge_cycles = self.getValue(message, 24, 27)
-        self.PowerDevice.entities.soc = self.getValue(message, 28, 31)
-        self.PowerDevice.entities.temperature = self.getValue(message, 32, 35)
-        self.PowerDevice.entities.status = self.getValue(message, 36, 37)
+        self.PowerDevice.entities.mcapacity = asciihex.field_value(message, 16, 23)
+        self.PowerDevice.entities.charge_cycles = asciihex.field_value(message, 24, 27)
+        self.PowerDevice.entities.soc = asciihex.field_value(message, 28, 31)
+        self.PowerDevice.entities.temperature = asciihex.field_value(message, 32, 35)
+        self.PowerDevice.entities.status = asciihex.field_value(message, 36, 37)
         # Per-cell voltages start past byte 40 -- exactly the region fragment
         # duplication corrupts. Only trust them on non-bloated ("full") frames;
         # a bloated frame's scalar head is fine but its cells are garbage.
         if full:
-            self.PowerDevice.entities.afestatus = self.getValue(message, 40, 41)
+            self.PowerDevice.entities.afestatus = asciihex.field_value(message, 40, 41)
             # The frame carries up to 16 cell slots, but these packs have far fewer
             # real cells; slots past the last real cell hold padding (0) or a
             # different field. Stop at the first empty slot. Some frames also carry
@@ -192,7 +182,7 @@ class Util():
             # range silently instead of letting the entity log it out-of-bounds.
             i = 0
             while i < 16:
-                cell_mv = self.getValue(message, (i * 4) + 44, (i * 4) + 47)
+                cell_mv = asciihex.field_value(message, (i * 4) + 44, (i * 4) + 47)
                 if cell_mv == 0:
                     break
                 if 1000 <= cell_mv <= 5000:

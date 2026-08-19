@@ -66,7 +66,7 @@ class Util():
         #  for i in range(len(value)):
         #      logging.debug("{}".format(value[i]))
 
-        if not self.Validate(value):
+        if not modbus.validate_frame(value):
             logging.warning("PollerUpdate - Invalid data: {}".format(value))
             return False
 
@@ -188,13 +188,13 @@ class Util():
 
     def updateVoltageCurrentSOC(self, bs):
         logging.debug("Voltage {} {} => {}".format(
-            int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * .1))
+            int(bs[5]), int(bs[6]), modbus.bytes_to_int(bs, 5, 2) * .1))
         logging.debug("Current {} {} => {}".format(
-            int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2) * .01))
-        self.max_capacity = self.Bytes2Int(bs, 12, 3) * .001
+            int(bs[3]), int(bs[4]), modbus.bytes_to_int(bs, 3, 2) * .01))
+        self.max_capacity = modbus.bytes_to_int(bs, 12, 3) * .001
         logging.debug("MaxCapacity {} {} {} => {}".format(
             int(bs[12]), int(bs[13]), int(bs[14]), self.max_capacity))
-        capacity = self.Bytes2Int(bs, 8, 3)* .001
+        capacity = modbus.bytes_to_int(bs, 8, 3)* .001
         logging.debug("Capacity {} {} {} => {}. Divided by max for SOC: {}".format(
             int(bs[8]), int(bs[9]), int(bs[10]), capacity,
             (capacity/self.max_capacity * 100)))
@@ -202,11 +202,11 @@ class Util():
         self.PowerDevice.entities.soc = capacity/self.max_capacity * 100
         self.PowerDevice.entities.max_capacity = self.max_capacity
 
-        current = to_signed(self.Bytes2Int(bs, 3, 2) * CURRENT_SCALE,
+        current = to_signed(modbus.bytes_to_int(bs, 3, 2) * CURRENT_SCALE,
                             CURRENT_WRAP, SIGN_THRESHOLD)
         self.PowerDevice.entities.current = current
         self.updateCapacityFromCurrent()
-        self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 5, 2) * .1
+        self.PowerDevice.entities.voltage = modbus.bytes_to_int(bs, 5, 2) * .1
         # hard-set capacity based on voltage to reset desync
         self.voltageToCapacity()
         return
@@ -218,8 +218,8 @@ class Util():
         for j in range(int(bs[4])):
             local_s = 5 + (j*2)
             logging.debug("CellmVoltage {} {} => {}".format(
-                int(bs[local_s]),int(bs[local_s+1]), self.Bytes2Int(bs, local_s, 2) * 100))
-            self.PowerDevice.entities.cell_mvoltage = (j+1,self.Bytes2Int(bs, local_s, 2) * 100)
+                int(bs[local_s]),int(bs[local_s+1]), modbus.bytes_to_int(bs, local_s, 2) * 100))
+            self.PowerDevice.entities.cell_mvoltage = (j+1,modbus.bytes_to_int(bs, local_s, 2) * 100)
         return
 
 
@@ -228,8 +228,8 @@ class Util():
         for j in range(int(bs[4])):
             local_s = 5 + (j*2)
             logging.debug("Temperature {} {} => {}".format(
-                int(bs[local_s]),int(bs[local_s+1]), self.Bytes2Int(bs, local_s, 2) * .1))
-            temperature = to_signed(self.Bytes2Int(bs, local_s, 2) * TEMPERATURE_SCALE,
+                int(bs[local_s]),int(bs[local_s+1]), modbus.bytes_to_int(bs, local_s, 2) * .1))
+            temperature = to_signed(modbus.bytes_to_int(bs, local_s, 2) * TEMPERATURE_SCALE,
                                     TEMPERATURE_WRAP, SIGN_THRESHOLD)
             self.PowerDevice.entities.temperature_celsius = temperature
             self.PowerDevice.entities.battery_temperature_celsius = temperature
@@ -252,20 +252,6 @@ class Util():
         capacity_amps = new_watts/(12.8 * 60 * 60)
         self.PowerDevice.entities.exp_capacity = capacity_amps
         return
-
-
-    def Bytes2Int(self, bs, offset, length):
-        return modbus.bytes_to_int(bs, offset, length)
-
-    def Int2Bytes(self, i, pos = 0):
-        if pos == 0:
-            return modbus.high_byte(i)
-        if pos == 1:
-            return modbus.low_byte(i)
-        return 0
-
-    def Validate(self, bs):
-        return modbus.validate_frame(bs)
 
 
     def create_poll_request(self, cmd):
@@ -297,8 +283,8 @@ class Util():
             data.append(0)
             data.append(readWrd)
             crc = libscrc.modbus(bytes(data))
-            data.append(self.Int2Bytes(crc, 1))
-            data.append(self.Int2Bytes(crc, 0))
+            data.append(modbus.low_byte(crc))
+            data.append(modbus.high_byte(crc))
             logging.debug("{} {} => {}".format("create_poll_request", cmd, data))
             return data
 

@@ -37,12 +37,19 @@ def test_end_before_start_is_rejected():
     assert field_value(FRAME, 6, 2) == 0
 
 
-def test_plugins_agree_with_the_shared_accessor():
-    """Meritsun and Topband hand-rolled this identically; both now delegate."""
-    from plugins.Meritsun import Util as Meritsun
-    from plugins.Topband import Util as Topband
+# --- checksum_matches --------------------------------------------------------
 
-    for start, end in ((0, 3), (0, 7), (4, 11)):
-        expected = field_value(FRAME, start, end)
-        assert Meritsun.getValue(None, FRAME, start, end) == expected
-        assert Topband.getValue(None, FRAME, start, end) == expected
+from asciihex import checksum_matches
+
+
+def ascii_hex_frame(text):
+    return [ord(c) for c in text]
+
+
+def test_a_frame_whose_trailing_sum_matches_is_accepted():
+    """Four fields of 0x01 are summed; the trailing two hold that sum, 0x0004."""
+    assert checksum_matches(ascii_hex_frame("X010101010004"), 13) is True
+
+
+def test_a_frame_whose_trailing_sum_does_not_match_is_rejected():
+    assert checksum_matches(ascii_hex_frame("X010101019900"), 13) is False
