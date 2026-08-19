@@ -5,10 +5,7 @@ but often aborts during GATT service resolution; it is transient and succeeds on
 retry. Exponential backoff (with jitter, so retries across devices don't all
 land at once) is the shared policy used for retrying failed connects.
 
-The thread-based connection loops that used to live here (`maintain_device`,
-`rotate_devices`, built on the abandoned `gatt` library) were replaced by the
-asyncio `maintain_device` in `ble.py` (bleak-based), which imports
-`backoff_seconds` from this module.
+`ble.py`'s asyncio `maintain_device` imports `backoff_seconds` from here.
 """
 import asyncio
 import logging

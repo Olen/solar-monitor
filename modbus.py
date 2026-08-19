@@ -1,8 +1,7 @@
 """Modbus RTU framing, shared by the plugins that speak it.
 
-RenogyBatt and SolarLink had byte-identical copies of all of this. The parts
-that genuinely differ between those devices -- which registers to poll, how to
-build a request, how to interpret a response -- stay in the plugins.
+What differs per device -- which registers to poll, how to build a request, how
+to interpret a response -- belongs in the plugin.
 """
 
 import logging

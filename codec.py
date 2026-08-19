@@ -7,11 +7,7 @@ Separate from `solardevice` so plugins can import it without a cycle:
 import logging
 
 # Two's-complement wrap points. A reading above the signed maximum is negative
-# and wraps by 2**bits. Every plugin open-coded this with its own constant and
-# each was short of 2**bits: Meritsun and Topband by one LSB (2**32 - 1),
-# RenogyBatt by two (65534, not 65536, for both current and temperature). So
-# every negative reading came out high -- by +0.02 A on RenogyBatt current,
-# which integrates into roughly 1.7 Ah/day of phantom charge.
+# and wraps by 2**bits.
 UINT16_WRAP = 1 << 16      # 65536
 UINT32_WRAP = 1 << 32      # 4294967296
 INT16_MAX = (1 << 15) - 1  # 32767

@@ -188,14 +188,13 @@ class BleManager:
 
 def command_bridge(datalogger, devices_by_name, manager, stop_event):
     """Threaded: consume MQTT commands (datalogger.mqtt.sets/trigger) and route
-    them to the async layer. Replaces the per-device mqtt_poller thread.
+    them to the async layer.
 
     The datalogger's on_message drains into mqtt.sets[device] and fires
-    mqtt.trigger[device] -- but nothing else creates those trigger Events (the
-    slim SolarDevice no longer does), so we register a single shared wake Event
-    for every device here. We also drain on the 0.5s poll timeout, so a command
-    that arrives before its trigger is registered (or with no trigger at all) is
-    still delivered."""
+    mqtt.trigger[device]. Nothing else creates those trigger Events, so one
+    shared wake Event is registered for every device here. Draining also happens
+    on the 0.5s poll timeout, so a command that arrives before its trigger is
+    registered -- or with no trigger at all -- is still delivered."""
     if not (datalogger and datalogger.mqtt):
         return
     mqtt = datalogger.mqtt

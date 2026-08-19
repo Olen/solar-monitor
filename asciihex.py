@@ -1,9 +1,8 @@
 """ASCII-hex framing, shared by the plugins that speak it.
 
-Meritsun and Topband encode every byte as two ASCII hex characters, least
-significant pair first, and protect a frame with a 16-bit additive checksum --
-not the CRC the Modbus devices use. Their frame layouts and packet types differ
-and stay in the plugins.
+Every byte is two ASCII hex characters, least significant pair first, and a
+frame is protected by a 16-bit additive checksum. Frame layouts and packet types
+differ per device and belong in the plugin.
 """
 
 import logging
