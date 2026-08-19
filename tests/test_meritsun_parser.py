@@ -79,3 +79,55 @@ def test_fragments_are_rejected(util):
     """A truncated frame must not decode: the checksum is the only gate."""
     truncated = [f[:20] for f in CAPTURED_FRAME]
     assert not any(feed(util, truncated))
+
+
+def test_voltage_only_frame_is_rejected(util):
+    """A run of ASCII '0' passes the additive checksum; it is not a reading.
+
+    Zeros sum to zero and the checksum field the run lands on reads zero, so
+    `checksum_matches` accepts it. Every field but the voltage decoding as 0 is
+    the tell.
+    """
+    message = [0x30] * 112
+    for index, char in enumerate(b"7A35"):          # a plausible pack voltage
+        message[index] = char
+    assert not util.handleMessage(message, full=True)
+    assert util.PowerDevice.entities.values == {}
+
+
+def test_a_real_frame_still_decodes(util):
+    """The zero-fill guard must not reject a frame whose current is legitimately 0."""
+    assert any(feed(util, CAPTURED_FRAME))
+    values = util.PowerDevice.entities.values
+    assert values["mcurrent"] == 0          # pack idle
+    assert values["soc"] == 99
+    assert values["mcapacity"] == 103072
+
+
+def test_a_field_the_checksum_cannot_see_is_dropped(util):
+    """A byte corrupted onto a "00" pair is invisible to the additive checksum.
+
+    Both the true pair and the unparseable one contribute 0, so the frame still
+    validates while the field silently reads 0. Only that field is dropped.
+    """
+    frames = list(CAPTURED_FRAME)
+    corrupted = bytearray(bytes.fromhex(frames[0]))
+    corrupted[11] = 0x20                      # a space inside mcurrent's "00000000"
+    frames[0] = bytes(corrupted).hex()
+
+    assert any(feed(util, frames)), "the frame is still valid and must be used"
+    values = util.PowerDevice.entities.values
+    assert "mcurrent" not in values, "the unreadable field must not be published"
+    assert values["soc"] == 99                # the rest of the frame survives
+    assert values["mcapacity"] == 103072
+    assert values["temperature"] == 2864
+
+
+def test_non_hex_byte_in_the_zero_fill_is_tolerated(util):
+    """Corruption past the fields costs nothing and must not drop anything."""
+    frames = list(CAPTURED_FRAME)
+    corrupted = bytearray(bytes.fromhex(frames[4]))   # deep in the zero fill
+    corrupted[5] = 0x70
+    frames[4] = bytes(corrupted).hex()
+    assert any(feed(util, frames))
+    assert util.PowerDevice.entities.values["soc"] == 99
