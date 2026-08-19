@@ -9,7 +9,8 @@ from datetime import datetime
 # import duallog
 import logging
 
-from codec import INT32_MAX, UINT32_WRAP, ascii_hex_value, to_signed
+import asciihex
+from codec import INT32_MAX, UINT32_WRAP, to_signed
 
 # duallog.setup('SmartPower', minLevel=logging.INFO)
 
@@ -61,30 +62,13 @@ class Util():
         self.prev_values = []
 
     def getValue(self, buf, start, end):
-        return ascii_hex_value(buf, start, end)
+        return asciihex.field_value(buf, start, end)
 
 
 
 
     def validateChecksum(self, buf):
-        # logging.debug(f"Checksum-calc: buf: {buf}")
-        Chksum1 = 0
-        Chksum2 = 0
-        j = 1
-        while j < self.end - 5:
-            Chksum1 = self.getValue(buf, j, j + 1) + Chksum1
-            # logging.debug(f"Checksum1-calc: j: {j} byteval: {self.getValue(buf, j, j + 1)}, Checksum1: {Chksum1}")
-            j += 2
-        # logging.debug("Checksum 1: {}".format(Chksum1))
-
-        Chksum2 = (self.getValue(buf, j, j + 1) << 8) + self.getValue(buf, j + 2, j + 3)
-        # logging.debug(f"Checksum2-calc: j: {j} byteval: {self.getValue(buf, j, j + 1)}, Shifted: {self.getValue(buf, j, j + 1) << 8}, Byteval2: {self.getValue(buf, j + 2, j + 3)}")
-
-        # logging.debug("Checksum 2: {}".format(Chksum2))
-        # logging.info("C1 {} C2 {}".format(Chksum1, Chksum2))
-        if Chksum1 == Chksum2:
-            return True
-        return False
+        return asciihex.checksum_matches(buf, self.end)
 
 
     def notificationUpdate(self, data, char):

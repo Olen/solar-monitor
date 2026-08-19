@@ -2,6 +2,8 @@ import logging
 
 from codec import UINT16_WRAP, to_signed
 import libscrc
+
+import modbus
 import dateutil.parser
 import re
 from datetime import datetime
@@ -118,7 +120,7 @@ class Util():
 
 
     def ackData(self, value):
-        return bytearray("main recv da ta[{0:02x}] [".format(value[0]), "ascii")
+        return modbus.ack_payload(value)
 
     def voltageToCapacity(self):
         # Hard-set the remaining capacity based on voltage to resync readings
@@ -253,80 +255,17 @@ class Util():
 
 
     def Bytes2Int(self, bs, offset, length):
-        # Reads data from a list of bytes, and converts to an int
-        # Bytes2Int(bs, 3, 2)
-        ret = 0
-        if len(bs) < (offset + length):
-            return ret
-        if length > 0:
-            # offset = 11, length = 2 => 11 - 12
-            byteorder='big'
-            start = offset
-            end = offset + length
-        else:
-            # offset = 11, length = -2 => 10 - 11
-            byteorder='little'
-            start = offset + length + 1
-            end = offset + 1
-        # logging.debug("Reading byte {} to {} of string {}".format(start, end, bs))
-        # Easier to read than the bitshifting below
-        return int.from_bytes(bs[start:end], byteorder=byteorder)
-
-        i = 0
-        s = offset + length - 1
-        while s >= offset:
-            # logging.debug("Reading from bs {} pos {}".format(bs, s))
-            # logging.debug("Value {}".format(bs[s]))
-            # Start at the back, and read each byte, multiply with 256 i times for each new byte
-            if i == 0:
-                ret = bs[s]
-            else:
-                ret = ret + bs[s] * (256 * i)
-            i = i + 1
-            s = s - 1
-        return ret
-        '''
-
-
-        ret = 0
-        i = 0
-        while i < length:
-            ret |= (bs[offset + i] & 255) << (((length - i) - 1) * 8)
-            i += 1
-        return ret
-        '''
+        return modbus.bytes_to_int(bs, offset, length)
 
     def Int2Bytes(self, i, pos = 0):
-        # Converts an integer into 2 bytes (16 bits)
-        # Returns either the first or second byte as an int
         if pos == 0:
-            return int(format(i, '016b')[:8], 2)
+            return modbus.high_byte(i)
         if pos == 1:
-            return int(format(i, '016b')[8:], 2)
+            return modbus.low_byte(i)
         return 0
 
     def Validate(self, bs):
-        header = 3
-        checksum = 2
-        if bs == None or len(bs) < header + checksum:
-            logging.warning("Invalid BS {}".format(bs))
-            return False
-
-        function = bs[1]
-        if function == 6:
-            # Response to write-function.  Ignore
-            return True
-        length = bs[2]
-        if len(bs) - (header + checksum) != int(length):
-            logging.warning("Invalid BS (wrong length) {}".format(bs))
-            return False
-
-        crc = libscrc.modbus(bytes(bs[:-2]))
-        check = self.Bytes2Int(bs, offset=len(bs)-1, length=-2)
-        if crc == check:
-            return True
-        logging.warning("CRC Failed: {} - Check: {}".format(crc, check))
-        return False
+        return modbus.validate_frame(bs)
 
 
     def create_poll_request(self, cmd):
