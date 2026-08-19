@@ -39,3 +39,53 @@ def test_connection_error_is_swallowed_not_raised(monkeypatch):
     dl = _make_url_only_logger()
     # Must NOT raise — a network blip must never propagate to the consumer loop.
     dl.send_to_server("reg", "voltage", 13.2)
+
+
+def _capture_post(monkeypatch, status=200):
+    """Record the kwargs of a successful POST."""
+    calls = {}
+
+    def fake_post(*args, **kwargs):
+        calls.update(kwargs)
+
+        class _R:
+            status_code = status
+        return _R()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    return calls
+
+
+def test_the_auth_header_is_sent_when_a_token_is_configured(monkeypatch):
+    calls = _capture_post(monkeypatch)
+    dl = _make_url_only_logger()
+    dl.token = "s3cret"
+    dl.send_to_server("reg", "voltage", 13.2)
+    assert calls["headers"]["Authorization"] == "Bearer s3cret"
+
+
+def test_no_auth_header_without_a_token(monkeypatch):
+    """'Bearer None' is worse than no header at all."""
+    calls = _capture_post(monkeypatch)
+    dl = _make_url_only_logger()
+    dl.token = None
+    dl.send_to_server("reg", "voltage", 13.2)
+    assert "Authorization" not in calls["headers"]
+
+
+def test_a_url_without_a_token_can_be_configured():
+    """`config.get('datalogger', 'token')` had no fallback, so a url without a
+    token raised NoOptionError at startup."""
+    import configparser
+    config = configparser.ConfigParser()
+    config["datalogger"] = {"url": "https://ingest.example.com/api/"}
+    dl = datalogger.DataLogger(config)
+    assert dl.url == "https://ingest.example.com/api/"
+    assert dl.token is None
+
+
+def test_no_datalogger_section_at_all():
+    import configparser
+    dl = datalogger.DataLogger(configparser.ConfigParser())
+    assert dl.url is None and dl.token is None
+    assert dl.refresh_interval == 10

@@ -305,6 +305,7 @@ class DataLogger():
         # config.get('datalogger', 'url'), config.get('datalogger', 'token')
         logging.debug("Creating new DataLogger")
         self.url = None
+        self.token = None
         self.mqtt = None
         # How often to resend a value that has not changed. Some consumers treat
         # a long gap as a stale sensor, so this is a trade between traffic and
@@ -312,7 +313,9 @@ class DataLogger():
         self.refresh_interval = config.getint('datalogger', 'refresh', fallback=10)
         if config.get('datalogger', 'url', fallback=None):
             self.url = config.get('datalogger', 'url')
-            self.token = config.get('datalogger', 'token')
+            # Optional: an ingest endpoint may not require auth, and a missing
+            # token used to raise NoOptionError at startup.
+            self.token = config.get('datalogger', 'token', fallback=None)
         if config.get('mqtt', 'broker', fallback=None):
             device_types = {}
             for section in config.sections():
@@ -398,7 +401,9 @@ class DataLogger():
             logging.info("[{}] Sending data to {}".format(device, self.url))
             ts = datetime.now().isoformat(' ', 'seconds')
             payload = {'device': device, var: val, 'ts': ts}
-            header = {'Content-type': 'application/json', 'Accept': 'text/plain', 'Authorization': 'Bearer {}'.format(self.token)}
+            header = {'Content-type': 'application/json', 'Accept': 'text/plain'}
+            if self.token:
+                header['Authorization'] = 'Bearer {}'.format(self.token)
             try:
                 response = requests.post(url=self.url, json=payload, headers=header, timeout=(5, 10))
                 if response.status_code >= 400:
