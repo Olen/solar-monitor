@@ -119,9 +119,7 @@ class SolarDevice:
 
     def run_command(self, var, message):
         # Only two of the six plugins implement cmdRequest; the rest are
-        # read-only devices. Treat "no commands" as empty rather than letting an
-        # AttributeError reach the caller, where it surfaces as a logged
-        # traceback and a command that silently does nothing.
+        # read-only devices, for which a command is a no-op worth logging.
         cmd_request = getattr(self.util, "cmdRequest", None)
         if cmd_request is None:
             logging.warning("[{}] plugin '{}' accepts no commands; ignoring {} = {}".format(
@@ -190,10 +188,8 @@ class SolarDevice:
         client = self._client
         if client is None or char_uuid is None:
             return
-        # Plugins build write payloads as a bytearray (VEDirect) OR a plain list of
-        # ints (SolarLink). gatt accepted a list; bleak's write_gatt_char needs a
-        # bytes-like object, so a list raised TypeError and the write silently never
-        # happened -- that was the dead SolarLink power switch. Normalise here.
+        # Plugins build write payloads as a bytearray (VEDirect) or a plain list
+        # of ints (SolarLink); write_gatt_char takes only bytes-like.
         if not isinstance(value, (bytes, bytearray, memoryview)):
             value = bytearray(value)
         loop = getattr(client, "_solar_loop", None) or asyncio.get_event_loop()

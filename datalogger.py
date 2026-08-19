@@ -61,9 +61,7 @@ class DataLoggerMqtt():
         self.client.connect(broker, port)                                   # establish connection
         self.client.loop_start()                                            # start the loop
 
-        # topic -> when its retained discovery config was last published.
-        # (A dict rather than the original list, which `publish(refresh=True)`
-        # re-appended to without bound -- 1000 entries for one unique topic.)
+        # topic -> when its retained discovery config was last published
         self.sensors = {}
         self.sets = {}
         if not prefix.endswith("/"):
@@ -323,8 +321,7 @@ class DataLogger():
         self.refresh_interval = config.getint('datalogger', 'refresh', fallback=10)
         if config.get('datalogger', 'url', fallback=None):
             self.url = config.get('datalogger', 'url')
-            # Optional: an ingest endpoint may not require auth, and a missing
-            # token used to raise NoOptionError at startup.
+            # Optional: an ingest endpoint may not require auth.
             self.token = config.get('datalogger', 'token', fallback=None)
         if config.get('mqtt', 'broker', fallback=None):
             device_types = {}
@@ -378,11 +375,8 @@ class DataLogger():
             self.logdata[device][var]['ts'] = ts
             self.logdata[device][var]['value'] = None
 
-        # Remember a value as sent only once it has been. Committing first meant
-        # a publish that failed -- a broker outage, a dropped link -- left the
-        # cache claiming the value was delivered, so the next identical reading
-        # compared equal and never resent it. The change then waited for the
-        # value to move again or for the 10-minute refresh.
+        # Remember a value as sent only once it has been: an undelivered value
+        # must stay different from the cache so the next reading resends it.
         if self.logdata[device][var]['value'] != val:
             logging.info("[{}] Sending new data {}: {}".format(device, var, val))
             if self.send_to_server(device, var, val):

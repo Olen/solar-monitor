@@ -71,16 +71,11 @@ class Util():
             return False
 
         # The device streams frames back-to-back behind two markers, 0x92 and
-        # 0xC9. Both carry the same layout -- every checksum-valid frame decodes
-        # identically regardless of marker, and 0xC9 carries about two thirds of
-        # them -- so both start a frame.
-        # Neither marker, nor the END_VAL (0x0C) padding, ever appears inside the
-        # ASCII-hex payload, so the markers delimit packets unambiguously. We
-        # accumulate the stream and re-sync on every marker, so a single lost or
-        # reframed notification can no longer desync the parser permanently the
-        # way the old fixed-121-byte logic did (which, after the trixie/BlueZ 5.82
-        # notification-framing change, gave up after the first frame). Unknown,
-        # short or corrupt packets are simply skipped.
+        # 0xC9, both carrying the same layout. Neither marker, nor the END_VAL
+        # (0x0C) padding, appears inside the ASCII-hex payload, so they delimit
+        # packets unambiguously. Accumulating and re-syncing on every marker
+        # keeps a lost or reframed notification from desyncing the parser.
+        # Unknown, short or corrupt packets are skipped.
         if not hasattr(self, '_stream'):
             self._stream = bytearray()
         self._stream.extend(data)
@@ -117,9 +112,8 @@ class Util():
         return updated
 
     def _frameEnd(self, packet):
-        # The checksum spans the frame up to its trailing 0x0C padding. `find`
-        # stops at the first 0x0C, which in this stream sits far too early; the
-        # device's own rule is the last padding byte before offset 110.
+        # The checksum spans the frame up to its trailing 0x0C padding: the last
+        # padding byte before offset 110, not the first 0x0C in the packet.
         end = 0
         for i in range(1, min(len(packet), 122)):
             if packet[i] == self.END_VAL and end < 110:
@@ -127,9 +121,8 @@ class Util():
         return end
 
     def _handleDataPacket(self, packet):
-        # Gate on the protocol checksum -- the only invariant that holds. The
-        # previous signature gate keyed on bytes that turned out to be live data:
-        # it matched 142/363 frames in July and 0/122 in August.
+        # The protocol checksum is the only invariant that holds across pack
+        # states; field values that look constant are not.
         buf = [0] * 122
         for k in range(min(len(packet), 122)):
             buf[k] = packet[k]
