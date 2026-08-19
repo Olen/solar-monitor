@@ -1,6 +1,8 @@
 import logging
 import libscrc
 
+import modbus
+
 
 
 class Config():
@@ -61,7 +63,7 @@ class Util():
         abuse the "length" field (byte #3 in the response) as an "id"
         '''
         logging.debug("REG: {} VAL: {}".format(self.poll_register, value))
-        if not self.Validate(value):
+        if not modbus.validate_frame(value):
             logging.warning("PollerUpdate - Invalid data: {}".format(value))
             return False
 
@@ -107,7 +109,7 @@ class Util():
 
 
     def ackData(self, value):
-        return bytearray("main recv da ta[{0:02x}] [".format(value[0]), "ascii")
+        return modbus.ack_payload(value)
 
 
     def cmdRequest(self, command, value):
@@ -129,50 +131,50 @@ class Util():
 
 
     def updateBatteryParamInfo(self, bs):
-        logging.debug("mSOC {} {} => {} %".format(int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2)))
-        self.PowerDevice.entities.soc = self.Bytes2Int(bs, 3, 2)
-        logging.debug("mVoltage {} {} => {} V".format(int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * 0.1))
-        self.PowerDevice.entities.charge_voltage = self.Bytes2Int(bs, 5, 2) * 0.1
-        logging.debug("mElectricity {} {} => {} A".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2) * 0.01))
-        self.PowerDevice.entities.charge_current = self.Bytes2Int(bs, 7, 2) * 0.01
+        logging.debug("mSOC {} {} => {} %".format(int(bs[3]), int(bs[4]), modbus.bytes_to_int(bs, 3, 2)))
+        self.PowerDevice.entities.soc = modbus.bytes_to_int(bs, 3, 2)
+        logging.debug("mVoltage {} {} => {} V".format(int(bs[5]), int(bs[6]), modbus.bytes_to_int(bs, 5, 2) * 0.1))
+        self.PowerDevice.entities.charge_voltage = modbus.bytes_to_int(bs, 5, 2) * 0.1
+        logging.debug("mElectricity {} {} => {} A".format(int(bs[7]), int(bs[8]), modbus.bytes_to_int(bs, 7, 2) * 0.01))
+        self.PowerDevice.entities.charge_current = modbus.bytes_to_int(bs, 7, 2) * 0.01
         logging.debug("mDeviceTemperature {}".format(int(bs[9])))
-        temp_celsius = self.Bytes2Int(bs, 9, 1)
+        temp_celsius = modbus.bytes_to_int(bs, 9, 1)
         if temp_celsius > 128:
             temp_celsius = 128 - temp_celsius
         self.PowerDevice.entities.temperature_celsius = temp_celsius
         logging.debug("mDeviceTemperatureCelsius {}".format(self.PowerDevice.entities.temperature_celsius))
-        battery_temp_celsius = self.Bytes2Int(bs, 10, 1)
+        battery_temp_celsius = modbus.bytes_to_int(bs, 10, 1)
         logging.debug("mBatteryTemperature {}".format(int(bs[10])))
         if battery_temp_celsius > 128:
             battery_temp_celsius = 128 - battery_temp_celsius
         self.PowerDevice.entities.battery_temperature_celsius = battery_temp_celsius
         logging.debug("mBatteryTemperatureCelsius {}".format(self.PowerDevice.entities.battery_temperature_celsius))
-        logging.debug("mLoadVoltage {} {} => {} V".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2) * 0.1))
-        self.PowerDevice.entities.voltage = self.Bytes2Int(bs, 11, 2) * 0.1
-        logging.debug("mLoadElectricity {} {} => {} A".format(int(bs[13]), int(bs[14]), self.Bytes2Int(bs, 13, 2) * 0.01))
-        self.PowerDevice.entities.current = self.Bytes2Int(bs, 13, 2) * 0.01
-        logging.debug("mLoadPower {} {} => {} W".format(int(bs[15]), int(bs[16]), self.Bytes2Int(bs, 15, 2)))
-        self.PowerDevice.entities.power = self.Bytes2Int(bs, 15, 2)
+        logging.debug("mLoadVoltage {} {} => {} V".format(int(bs[11]), int(bs[12]), modbus.bytes_to_int(bs, 11, 2) * 0.1))
+        self.PowerDevice.entities.voltage = modbus.bytes_to_int(bs, 11, 2) * 0.1
+        logging.debug("mLoadElectricity {} {} => {} A".format(int(bs[13]), int(bs[14]), modbus.bytes_to_int(bs, 13, 2) * 0.01))
+        self.PowerDevice.entities.current = modbus.bytes_to_int(bs, 13, 2) * 0.01
+        logging.debug("mLoadPower {} {} => {} W".format(int(bs[15]), int(bs[16]), modbus.bytes_to_int(bs, 15, 2)))
+        self.PowerDevice.entities.power = modbus.bytes_to_int(bs, 15, 2)
         return
 
 
 
     def updateSolarPanelAndBatteryState(self, bs):
-        logging.debug("mSolarPanelState {} => {}".format(int(bs[3]), self.Bytes2Int(bs, 3, 1) >> 7))
-        logging.debug("mBatteryState {} => {}".format(int(bs[4]), self.Bytes2Int(bs, 4, 1)))
-        logging.debug("mControllerInfo {} {} {} {} => {}".format(int(bs[5]), int(bs[6]), int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 5, 4)))
+        logging.debug("mSolarPanelState {} => {}".format(int(bs[3]), modbus.bytes_to_int(bs, 3, 1) >> 7))
+        logging.debug("mBatteryState {} => {}".format(int(bs[4]), modbus.bytes_to_int(bs, 4, 1)))
+        logging.debug("mControllerInfo {} {} {} {} => {}".format(int(bs[5]), int(bs[6]), int(bs[7]), int(bs[8]), modbus.bytes_to_int(bs, 5, 4)))
         return
 
     def updateSolarPanelInfo(self, bs):
-        logging.debug("mVoltage {} {} => {}".format(int(bs[3]), int(bs[4]), self.Bytes2Int(bs, 3, 2) * 0.1))
-        self.PowerDevice.entities.input_voltage = self.Bytes2Int(bs, 3, 2) * 0.1
-        logging.debug("mElectricity {} {} => {}".format(int(bs[5]), int(bs[6]), self.Bytes2Int(bs, 5, 2) * 0.01))
-        self.PowerDevice.entities.input_current = self.Bytes2Int(bs, 5, 2) * 0.01
-        logging.debug("mChargingPower {} {} => {}".format(int(bs[7]), int(bs[8]), self.Bytes2Int(bs, 7, 2)))
-        self.PowerDevice.entities.input_power = self.Bytes2Int(bs, 7, 2)
-        logging.debug("mSwitch {} {} => {}".format(int(bs[9]), int(bs[10]), self.Bytes2Int(bs, 9, 2)))
-        self.PowerDevice.entities.power_switch = self.Bytes2Int(bs, 9, 2)
-        logging.debug("mUnkown {} {} => {}".format(int(bs[11]), int(bs[12]), self.Bytes2Int(bs, 11, 2)))
+        logging.debug("mVoltage {} {} => {}".format(int(bs[3]), int(bs[4]), modbus.bytes_to_int(bs, 3, 2) * 0.1))
+        self.PowerDevice.entities.input_voltage = modbus.bytes_to_int(bs, 3, 2) * 0.1
+        logging.debug("mElectricity {} {} => {}".format(int(bs[5]), int(bs[6]), modbus.bytes_to_int(bs, 5, 2) * 0.01))
+        self.PowerDevice.entities.input_current = modbus.bytes_to_int(bs, 5, 2) * 0.01
+        logging.debug("mChargingPower {} {} => {}".format(int(bs[7]), int(bs[8]), modbus.bytes_to_int(bs, 7, 2)))
+        self.PowerDevice.entities.input_power = modbus.bytes_to_int(bs, 7, 2)
+        logging.debug("mSwitch {} {} => {}".format(int(bs[9]), int(bs[10]), modbus.bytes_to_int(bs, 9, 2)))
+        self.PowerDevice.entities.power_switch = modbus.bytes_to_int(bs, 9, 2)
+        logging.debug("mUnkown {} {} => {}".format(int(bs[11]), int(bs[12]), modbus.bytes_to_int(bs, 11, 2)))
 
 
     def updateParamSettingData(self, bs):
@@ -195,7 +197,7 @@ class Util():
         '''
         i = 0
         while i<len(bs) / 2:
-            self.mData.append(self.Bytes2Int(bs, (i * 2) + adder, 2))
+            self.mData.append(modbus.bytes_to_int(bs, (i * 2) + adder, 2))
             logging.debug("BS len: {} - reading from byte {} to byte {}".format(len(bs), (i * 2) + adder, (i * 2) + adder + 1))
 
             i += 1
@@ -207,86 +209,6 @@ class Util():
             else:
                 logging.debug("Switch off")
         '''
-
-
-
-    def Bytes2Int(self, bs, offset, length):
-        # Reads data from a list of bytes, and converts to an int
-        # Bytes2Int(bs, 3, 2)
-        ret = 0
-        if len(bs) < (offset + length):
-            return ret
-        if length > 0:
-            # offset = 11, length = 2 => 11 - 12
-            byteorder='big'
-            start = offset
-            end = offset + length
-        else:
-            # offset = 11, length = -2 => 10 - 11
-            byteorder='little'
-            start = offset + length + 1
-            end = offset + 1
-        # logging.debug("Reading byte {} to {} of string {}".format(start, end, bs))
-        # Easier to read than the bitshifting below
-        return int.from_bytes(bs[start:end], byteorder=byteorder)
-
-        i = 0
-        s = offset + length - 1
-        while s >= offset:
-            # logging.debug("Reading from bs {} pos {}".format(bs, s))
-            # logging.debug("Value {}".format(bs[s]))
-            # Start at the back, and read each byte, multiply with 256 i times for each new byte
-            if i == 0:
-                ret = bs[s]
-            else:
-                ret = ret + bs[s] * (256 * i)
-            i = i + 1
-            s = s - 1
-        return ret
-        '''
-
-
-        ret = 0
-        i = 0
-        while i < length:
-            ret |= (bs[offset + i] & 255) << (((length - i) - 1) * 8)
-            i += 1
-        return ret
-        '''
-
-    def Int2Bytes(self, i, pos = 0):
-        # Converts an integer into 2 bytes (16 bits)
-        # Returns either the first or second byte as an int
-        if pos == 0:
-            return int(format(i, '016b')[:8], 2)
-        if pos == 1:
-            return int(format(i, '016b')[8:], 2)
-        return 0
-
-    def Validate(self, bs):
-        header = 3
-        checksum = 2
-        if bs == None or len(bs) < header + checksum:
-            logging.warning("Invalid BS {}".format(bs))
-            return False
-
-        function = bs[1]
-        if function == 6:
-            # Response to write-function.  Ignore
-            return True
-        length = bs[2]
-        if len(bs) - (header + checksum) != int(length):
-            logging.warning("Invalid BS (wrong length) {}".format(bs))
-            return False
-
-
-        # crc = libscrc.modbus(bytearray(bs[:-2]))
-        crc = libscrc.modbus(bytes(bs[:-2]))
-        check = self.Bytes2Int(bs, offset=len(bs)-1, length=-2)
-        if crc == check:
-            return True
-        logging.warning("CRC Failed: {} - Check: {}".format(crc, check))
-        return False
 
 
 
@@ -321,15 +243,15 @@ class Util():
             data = []
             data.append(self.PowerDevice.device_id)
             data.append(function)
-            data.append(self.Int2Bytes(regAddr, 0))
-            data.append(self.Int2Bytes(regAddr, 1))
-            data.append(self.Int2Bytes(readWrd, 0))
-            data.append(self.Int2Bytes(readWrd, 1))
+            data.append(modbus.high_byte(regAddr))
+            data.append(modbus.low_byte(regAddr))
+            data.append(modbus.high_byte(readWrd))
+            data.append(modbus.low_byte(readWrd))
 
             # crc = libscrc.modbus(bytearray(data))
             crc = libscrc.modbus(bytes(data))
-            data.append(self.Int2Bytes(crc, 1))
-            data.append(self.Int2Bytes(crc, 0))
+            data.append(modbus.low_byte(crc))
+            data.append(modbus.high_byte(crc))
             logging.debug("{} {} => {}".format("create_poll_request", cmd, data))
         return data
 
