@@ -41,6 +41,15 @@ The monitor runs fine on a Raspberry Pi zero, making it ideal for monitoring pla
 
 # Docker
 
+Images are published to the GitHub container registry for `linux/amd64` and
+`linux/arm64`:
+
+```
+ghcr.io/olen/solar-monitor:latest
+ghcr.io/olen/solar-monitor:2026.8      # latest patch of that series
+ghcr.io/olen/solar-monitor:2026.8.0    # exact release
+```
+
 To run the service as a container, you can use the included `docker-compose.yaml`
 
 * Copy `solar-monitor.ini.dist` to e.g `~/solar-monitor/solar-monitor.ini`
@@ -49,9 +58,16 @@ To run the service as a container, you can use the included `docker-compose.yaml
 * Run:
 
 ```
-docker-compose up -d
+docker compose pull && docker compose up -d
 ```
-in the same dir as you downloaded these files.  This might take some time, depending on your build host.
+in the same dir as you downloaded these files.
+
+To build the image yourself instead of pulling it, use `docker compose up -d
+--build`. That compiles `libscrc` and takes a while on a Raspberry Pi.
+
+The container runs as uid 1000. If the ini-file and log directory on the host
+belong to a different user, build with `--build-arg UID=... --build-arg GID=...`
+to match.
 
 Check the logs with
 
@@ -237,6 +253,28 @@ This allows you to remotely monitor the data from your installation:
 Each supported device family has a plugin under `plugins/`, responsible for that
 device's framing and decoding. [PLUGINS.md](PLUGINS.md) describes what a plugin
 must provide.
+
+
+# Releases
+
+Pushing a `v`-prefixed tag builds and publishes the image:
+
+```
+git tag -a v2026.8.0 -m "..."
+git push origin v2026.8.0
+```
+
+Versions are `vYYYY.M.PATCH`. The tag produces `2026.8.0`, `2026.8` and
+`latest`, each carrying `org.opencontainers.image.*` metadata — source, revision,
+version, licence and build time:
+
+```
+docker buildx imagetools inspect ghcr.io/olen/solar-monitor:latest
+```
+
+Nothing is published on an ordinary push to `master`. Pull requests that touch
+the `Dockerfile`, `requirements.txt` or the workflow build both architectures
+without pushing.
 
 
 # Licence

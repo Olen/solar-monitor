@@ -34,4 +34,13 @@ WORKDIR /solar-monitor
 COPY --chown=$UID:$GID . .
 USER solar
 
+LABEL org.opencontainers.image.title="solar-monitor" \
+      org.opencontainers.image.description="Reads solar regulators, inverters and battery BMSes over Bluetooth LE and publishes to MQTT or HTTP" \
+      org.opencontainers.image.url="https://github.com/Olen/solar-monitor" \
+      org.opencontainers.image.source="https://github.com/Olen/solar-monitor" \
+      org.opencontainers.image.documentation="https://github.com/Olen/solar-monitor/blob/master/README.md" \
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.opencontainers.image.vendor="Olen" \
+      org.opencontainers.image.base.name="docker.io/library/python:3.11-slim-bookworm"
+
 ENTRYPOINT [ "python", "-u", "solar-monitor.py" ]

@@ -1,6 +1,7 @@
 services:
   solar-monitor:
-    build: 
+    image: ghcr.io/olen/solar-monitor:latest
+    build:
       context: .
       network: host
     container_name: solar-monitor

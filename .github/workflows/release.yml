@@ -1,0 +1,66 @@
+name: Image
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - requirements.txt
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # libscrc has no aarch64 wheel and compiles in the builder stage, so the
+      # arm64 build needs emulation.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        env:
+          # Annotate the manifest list as well, so registries that read the
+          # index rather than the per-platform config show the metadata.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+          # The repository has no description for metadata-action to derive.
+          labels: |
+            org.opencontainers.image.description=Reads solar regulators, inverters and battery BMSes over Bluetooth LE and publishes to MQTT or HTTP
+          annotations: |
+            org.opencontainers.image.description=Reads solar regulators, inverters and battery BMSes over Bluetooth LE and publishes to MQTT or HTTP
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
