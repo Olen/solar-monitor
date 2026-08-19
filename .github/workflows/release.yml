@@ -56,8 +56,12 @@ jobs:
           # The repository has no description for metadata-action to derive.
           labels: |
             org.opencontainers.image.description=Reads solar regulators, inverters and battery BMSes over Bluetooth LE and publishes to MQTT or HTTP
+            org.opencontainers.image.licenses=GPL-3.0-only
           annotations: |
             org.opencontainers.image.description=Reads solar regulators, inverters and battery BMSes over Bluetooth LE and publishes to MQTT or HTTP
+            org.opencontainers.image.documentation=https://github.com/Olen/solar-monitor/blob/master/README.md
+            org.opencontainers.image.vendor=Olen
+            org.opencontainers.image.licenses=GPL-3.0-only
 
       - uses: docker/build-push-action@v6
         with:
@@ -69,3 +73,31 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+          {
+            printf '```\ndocker pull ghcr.io/%s:%s\n```\n\n' \
+              "${GITHUB_REPOSITORY,,}" "${TAG#v}"
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f tag_name="$TAG" --jq .body
+          } > notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md
