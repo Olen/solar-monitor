@@ -5,6 +5,7 @@ import asyncio
 
 import logging
 
+from connection import write_with_retry
 from supervisor import try_put
 
 
@@ -200,14 +201,9 @@ class SolarDevice:
         lock = getattr(client, "_solar_write_lock", None)
 
         async def _w():
-            try:
-                if lock is not None:
-                    async with lock:
-                        await client.write_gatt_char(char_uuid, value)
-                else:
-                    await client.write_gatt_char(char_uuid, value)
-            except Exception as e:
-                logging.warning("[{}] characteristic write failed: {}".format(self.logger_name, e))
+            # Commands retry once; polls (ble._hold) deliberately do not.
+            await write_with_retry(client, char_uuid, value, lock=lock,
+                                   name=self.logger_name)
         try:
             asyncio.run_coroutine_threadsafe(_w(), loop)
         except Exception as e:
