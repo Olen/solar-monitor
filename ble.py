@@ -32,7 +32,7 @@ def _assert_connection_interval(dev):
     """
     interval = getattr(dev, "connection_interval", None)
     if interval:
-        hci.set_connection_interval(dev.mac_address, *interval)
+        hci.set_connection_interval(dev.mac_address, *interval, name=dev.logger_name)
 
 
 def _verify_link(dev):
@@ -53,7 +53,7 @@ def _verify_link(dev):
         return
     logging.warning("[%s] %d of %d frames accepted; re-asserting %g-%g ms",
                     dev.logger_name, accepted, total, *interval)
-    hci.set_connection_interval(dev.mac_address, *interval)
+    hci.set_connection_interval(dev.mac_address, *interval, name=dev.logger_name)
 
 
 async def _hold(dev, client, stop_event, poll_interval, sleep):

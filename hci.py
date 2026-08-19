@@ -35,15 +35,16 @@ def connection_handle(mac, run=_run):
     return match.group(1) if match else None
 
 
-def set_connection_interval(mac, min_ms, max_ms, run=_run):
+def set_connection_interval(mac, min_ms, max_ms, name="", run=_run):
     """Ask the controller for a new interval on an established link.
 
     Returns True when the command was accepted. The peripheral may renegotiate
-    afterwards, which is why callers re-assert on reconnect.
+    afterwards, which is why callers re-assert on reconnect. `name` is the
+    device's logger name: log lines identify devices by name, never by address.
     """
     handle = connection_handle(mac, run=run)
     if handle is None:
-        logging.debug("[%s] no connection handle; cannot set the interval", mac)
+        logging.debug("[%s] no connection handle; cannot set the interval", name)
         return False
     args = [HCITOOL, "lecup", "--handle", handle,
             "--min", str(round(min_ms * UNITS_PER_MS)),
@@ -52,14 +53,14 @@ def set_connection_interval(mac, min_ms, max_ms, run=_run):
     try:
         result = run(args)
     except Exception as error:
-        logging.warning("[%s] setting the connection interval failed: %r", mac, error)
+        logging.warning("[%s] setting the connection interval failed: %r", name, error)
         return False
     output = (result.stdout or "") + (result.stderr or "")
     if result.returncode != 0 or "Operation not permitted" in output or "Could not" in output:
         logging.warning("[%s] could not set the connection interval: %s",
-                        mac, output.strip() or f"exit {result.returncode}")
+                        name, output.strip() or f"exit {result.returncode}")
         return False
-    logging.info("[%s] connection interval set to %g-%g ms", mac, min_ms, max_ms)
+    logging.info("[%s] connection interval set to %g-%g ms", name, min_ms, max_ms)
     return True
 
 

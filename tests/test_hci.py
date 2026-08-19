@@ -68,7 +68,7 @@ class _Dev:
 def test_a_degraded_link_is_re_asserted(monkeypatch):
     asserted = []
     monkeypatch.setattr(hci, "set_connection_interval",
-                        lambda mac, lo, hi: asserted.append((mac, lo, hi)))
+                        lambda mac, lo, hi, name="": asserted.append((mac, lo, hi)))
     ble._verify_link(_Dev(interval=(15, 30), health=(2, 200)))
     assert asserted == [("7C:01:0A:41:CA:F9", 15, 30)]
 
@@ -76,7 +76,7 @@ def test_a_degraded_link_is_re_asserted(monkeypatch):
 def test_a_healthy_link_is_left_alone(monkeypatch):
     asserted = []
     monkeypatch.setattr(hci, "set_connection_interval",
-                        lambda mac, lo, hi: asserted.append(mac))
+                        lambda mac, lo, hi, name="": asserted.append(mac))
     ble._verify_link(_Dev(interval=(15, 30), health=(85, 15)))
     assert asserted == []
 
@@ -85,7 +85,7 @@ def test_too_few_frames_to_judge(monkeypatch):
     """A quiet moment is not a bad link."""
     asserted = []
     monkeypatch.setattr(hci, "set_connection_interval",
-                        lambda mac, lo, hi: asserted.append(mac))
+                        lambda mac, lo, hi, name="": asserted.append(mac))
     ble._verify_link(_Dev(interval=(15, 30), health=(0, 3)))
     assert asserted == []
 
@@ -93,7 +93,7 @@ def test_too_few_frames_to_judge(monkeypatch):
 def test_devices_without_a_configured_interval_are_untouched(monkeypatch):
     asserted = []
     monkeypatch.setattr(hci, "set_connection_interval",
-                        lambda mac, lo, hi: asserted.append(mac))
+                        lambda mac, lo, hi, name="": asserted.append(mac))
     ble._verify_link(_Dev(interval=None, health=(0, 500)))
     ble._assert_connection_interval(_Dev(interval=None))
     assert asserted == []
@@ -102,6 +102,6 @@ def test_devices_without_a_configured_interval_are_untouched(monkeypatch):
 def test_the_interval_is_asserted_on_connect(monkeypatch):
     asserted = []
     monkeypatch.setattr(hci, "set_connection_interval",
-                        lambda mac, lo, hi: asserted.append((mac, lo, hi)))
+                        lambda mac, lo, hi, name="": asserted.append((mac, lo, hi)))
     ble._assert_connection_interval(_Dev(interval=(15, 30)))
     assert asserted == [("7C:01:0A:41:CA:F9", 15, 30)]
