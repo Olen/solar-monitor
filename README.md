@@ -216,6 +216,18 @@ This allows you to remotely monitor the data from your installation:
 
 
 
+# Plugins
+
+Each supported device family has a plugin under `plugins/`, responsible for that
+device's framing and decoding. [PLUGINS.md](PLUGINS.md) describes what a plugin
+must provide and how to add one.
+
+
+# Licence
+
+GPLv3. See [LICENSE](LICENSE).
+
+
 # Credits
 A huge thanks to Pramod P K https://github.com/prapkengr/ for doing reverse engineering and decompiling of the Android Apps to figure out the protocols used.
 
