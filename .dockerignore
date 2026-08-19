@@ -1,0 +1,22 @@
+# Only what runs belongs in the image.
+
+.git
+.gitignore
+.github
+
+# The config is mounted at runtime. solar-monitor.ini.dist is not matched here
+# and ships as the example.
+*.ini
+
+# Reverse-engineering captures.
+plugins/*/dev/
+
+tests/
+docs/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+core.*
+docker-compose*.yaml
