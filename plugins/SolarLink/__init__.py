@@ -137,6 +137,14 @@ class Util():
         self.PowerDevice.entities.charge_voltage = modbus.bytes_to_int(bs, 5, 2) * 0.1
         logging.debug("mElectricity {} {} => {} A".format(int(bs[7]), int(bs[8]), modbus.bytes_to_int(bs, 7, 2) * 0.01))
         self.PowerDevice.entities.charge_current = modbus.bytes_to_int(bs, 7, 2) * 0.01
+        # The regulator reports charge voltage and current but not their product;
+        # derive it so charge power is available like every other power reading.
+        charge_power_watts = (self.PowerDevice.entities.charge_voltage
+                              * self.PowerDevice.entities.charge_current)
+        logging.debug("mChargePower {} V * {} A => {} W".format(
+            self.PowerDevice.entities.charge_voltage,
+            self.PowerDevice.entities.charge_current, charge_power_watts))
+        self.PowerDevice.entities.charge_power = charge_power_watts
         logging.debug("mDeviceTemperature {}".format(int(bs[9])))
         temp_celsius = modbus.bytes_to_int(bs, 9, 1)
         if temp_celsius > 128:
