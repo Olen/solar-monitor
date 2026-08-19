@@ -257,7 +257,8 @@ must provide.
 
 # Releases
 
-Pushing a `v`-prefixed tag builds and publishes the image:
+Pushing a `v`-prefixed tag builds the image, publishes it and creates the
+matching GitHub release:
 
 ```
 git tag -a v2026.8.0 -m "..."
@@ -272,9 +273,12 @@ version, licence and build time:
 docker buildx imagetools inspect ghcr.io/olen/solar-monitor:latest
 ```
 
-Nothing is published on an ordinary push to `master`. Pull requests that touch
-the `Dockerfile`, `requirements.txt` or the workflow build both architectures
-without pushing.
+The release notes are generated from the pull requests merged since the previous
+tag, with the pull command on top.
+
+Nothing is published on an ordinary push to `master`. Pull requests from this
+repository that touch the `Dockerfile`, `requirements.txt` or the workflow build
+both architectures without pushing.
 
 
 # Licence
