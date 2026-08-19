@@ -18,3 +18,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      # One PR for every action: they all live in the same workflow file, so
+      # separate PRs conflict as soon as the first one merges.
+      actions:
+        patterns:
+          - "*"
