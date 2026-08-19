@@ -306,6 +306,10 @@ class DataLogger():
         logging.debug("Creating new DataLogger")
         self.url = None
         self.mqtt = None
+        # How often to resend a value that has not changed. Some consumers treat
+        # a long gap as a stale sensor, so this is a trade between traffic and
+        # keeping graphs and external loggers happy.
+        self.refresh_interval = config.getint('datalogger', 'refresh', fallback=10)
         if config.get('datalogger', 'url', fallback=None):
             self.url = config.get('datalogger', 'url')
             self.token = config.get('datalogger', 'token')
@@ -373,7 +377,7 @@ class DataLogger():
                 self.logdata[device][var]['value'] = val
             else:
                 logging.warning("[{}] {} = {} not delivered; will resend".format(device, var, val))
-        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=10):
+        elif self.logdata[device][var]['ts'] < datetime.now()-timedelta(minutes=self.refresh_interval):
             logging.info("[{}] Sending refreshed data {}: {}".format(device, var, val))
             if self.send_to_server(device, var, val, True):
                 self.logdata[device][var]['ts'] = ts
