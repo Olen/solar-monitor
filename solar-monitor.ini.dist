@@ -72,6 +72,10 @@ reconnect = False
 # JSON/HTTP datalogger. Leave commented out to use MQTT only.
 # url = https://server.example.com/solar/api/
 # token = your-token-here
+# How often (in minutes) to resend a value that has not changed. A longer
+# interval means less traffic, but some graphs and external loggers complain
+# about stale data when updates are rare. Applies to MQTT as well as HTTP.
+refresh = 10
 
 [mqtt]
 # Address to the mqtt broker

@@ -74,6 +74,21 @@ The systemd unit file might need some adjustments to point to the right scripts
 Alternatively just run `solar-monitor.py` in something like termux or screen (might require root privileges to access bluetooth directly)
 
 
+# Resend interval
+
+A value is published when it changes. A value that has *not* changed is resent
+every 10 minutes, so consumers that treat a long gap as a stale sensor stay
+happy. Set it per install in the `[datalogger]` section:
+
+```ini
+[datalogger]
+refresh = 30
+```
+
+Minutes. A longer interval means less traffic; a shorter one keeps graphs and
+external loggers from complaining when a value is genuinely steady. It applies
+to MQTT publishing as well as the HTTP datalogger.
+
 # Tuning the value limits
 
 Every reading is checked against bounds before it is published: a hard `min` and
