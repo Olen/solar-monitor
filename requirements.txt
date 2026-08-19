@@ -1,6 +1,19 @@
-bleak
-configparser
-requests
-paho-mqtt
-libscrc
-python-dateutil
+# Pinned so a fresh install resolves to the set that has been tested.
+# Dependabot proposes updates; see .github/dependabot.yml.
+
+# Direct
+bleak==3.0.2
+configparser==7.2.0
+libscrc==1.8.1
+paho-mqtt==2.1.0
+python-dateutil==2.9.0.post0
+requests==2.34.2
+
+# Pulled in by the above
+certifi==2026.7.22
+charset-normalizer==3.5.1
+dbus-fast==5.0.22
+idna==3.19
+six==1.17.0
+typing_extensions==4.16.0
+urllib3==2.7.0

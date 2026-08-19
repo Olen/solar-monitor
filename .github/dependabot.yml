@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # bleak and its own dependencies move together; separate PRs for them
+      # tend to conflict.
+      bleak:
+        patterns:
+          - bleak
+          - dbus-fast
+          - typing_extensions
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
