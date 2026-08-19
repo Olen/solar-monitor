@@ -22,7 +22,12 @@ async def _hold(dev, client, stop_event, poll_interval, sleep):
                 if not isinstance(data, (bytes, bytearray, memoryview)):
                     data = bytearray(data)
                 try:
-                    await client.write_gatt_char(dev.device_write_characteristic_polling, data)
+                    lock = getattr(client, "_solar_write_lock", None)
+                    if lock is not None:
+                        async with lock:
+                            await client.write_gatt_char(dev.device_write_characteristic_polling, data)
+                    else:
+                        await client.write_gatt_char(dev.device_write_characteristic_polling, data)
                 except Exception as e:
                     logging.warning("[%s] poll write failed: %r", dev.logger_name, e)
                     break
@@ -104,6 +109,11 @@ class BleManager:
     def _client_factory(self, mac):
         client = BleakClient(mac, adapter=self.adapter) if self.adapter else BleakClient(mac)
         client._solar_loop = self.loop
+        # Poll writes (_hold) and command writes (SolarDevice.characteristic_write_value)
+        # are separate coroutines on this one loop, so they interleave at every
+        # await -- a command can start a write while a poll write is in flight on
+        # the same connection. Serialise them per client.
+        client._solar_write_lock = asyncio.Lock()
         return client
 
     def start(self):

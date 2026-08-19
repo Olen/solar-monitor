@@ -197,9 +197,15 @@ class SolarDevice:
             value = bytearray(value)
         loop = getattr(client, "_solar_loop", None) or asyncio.get_event_loop()
 
+        lock = getattr(client, "_solar_write_lock", None)
+
         async def _w():
             try:
-                await client.write_gatt_char(char_uuid, value)
+                if lock is not None:
+                    async with lock:
+                        await client.write_gatt_char(char_uuid, value)
+                else:
+                    await client.write_gatt_char(char_uuid, value)
             except Exception as e:
                 logging.warning("[{}] characteristic write failed: {}".format(self.logger_name, e))
         try:
