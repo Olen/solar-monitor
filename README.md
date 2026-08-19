@@ -3,13 +3,29 @@
 This utility monitors defined BLE-devices, and sends parsed data to a remote server using either MQTT or json/HTTP
 
 Currently supported
-- SRNE regulators (monitored by the SolarLink APP: https://play.google.com/store/apps/details?id=com.shuorigf
-- Lithium Batteries:
-  - monitored by the Meritsun APP: https://play.google.com/store/apps/details?id=com.meritsun.smartpower
-  - monitored by Renogy DC Home APP: https://play.google.com/store/apps/details?id=com.renogy.dchome)
-  - monitored by TBEnergy APP: https://play.google.com/store/apps/details?id=com.topband.smartpower
-- Victron Energy - VE.Direct devices - currently only Phoenix inverters are tested.  Work in progress to add more devices
-- Renogy BT-1 (uses the same protocol as the SolarLink/SRNE)
+
+| Device | Plugin | Vendor app |
+|---|---|---|
+| SRNE regulators | `SolarLink` | [SolarLink](https://play.google.com/store/apps/details?id=com.shuorigf) |
+| Renogy BT-1 | `SolarLink` | same protocol as SRNE |
+| Lithium batteries | `Meritsun` | [Meritsun](https://play.google.com/store/apps/details?id=com.meritsun.smartpower) |
+| Lithium batteries | `RenogyBatt` | [Renogy DC Home](https://play.google.com/store/apps/details?id=com.renogy.dchome) |
+| Lithium batteries | `Topband` | [TBEnergy](https://play.google.com/store/apps/details?id=com.topband.smartpower) |
+| Victron VE.Direct | `VEDirect` | Phoenix inverters tested; other devices in progress |
+| Hacien / HC batteries | `Hacien` | [HC Battery](https://play.google.com/store/apps/details?id=com.chiptrip.hcbattery) — in progress |
+
+Adding a device family means writing one plugin — see [PLUGINS.md](PLUGINS.md).
+
+
+# Update 2026-08-10
+
+- **Home Assistant discovery over MQTT** — sensors appear automatically, grouped per physical unit, and controllable devices get switches.
+- **Per-device validation limits, tunable from the ini.** Readings outside a plausible range are rejected rather than published; the bounds are configurable for hardware the defaults do not fit, such as a 24 V array. See [Tuning the value limits](#tuning-the-value-limits).
+- **Configurable resend interval** for values that have not changed, for consumers that treat a long gap as a stale sensor.
+- **Every device is held connected continuously**, which notify-only batteries require to deliver anything at all. A healthy adapter holds several links at once. See [docs/BLUETOOTH.md](docs/BLUETOOTH.md).
+- **Runs as a non-root user**, both in the container and under the supplied systemd unit, which is sandboxed and keeps its code and config read-only.
+- **Self-contained image**, with pinned dependencies kept current by dependabot.
+
 
 # Update 2025-01-31
 The latest updates adds threading to the application, so it will now poll each device in its own thread, and log data in a different thread.
@@ -220,7 +236,7 @@ This allows you to remotely monitor the data from your installation:
 
 Each supported device family has a plugin under `plugins/`, responsible for that
 device's framing and decoding. [PLUGINS.md](PLUGINS.md) describes what a plugin
-must provide and how to add one.
+must provide.
 
 
 # Licence
