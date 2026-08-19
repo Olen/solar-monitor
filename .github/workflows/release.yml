@@ -13,6 +13,11 @@ on:
 
 jobs:
   image:
+    # A pull_request run uses the workflow and Dockerfile from the PR head, so
+    # building one from a fork would execute its RUN steps on the runner.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
