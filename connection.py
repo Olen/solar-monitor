@@ -10,6 +10,8 @@ The thread-based connection loops that used to live here (`maintain_device`,
 asyncio `maintain_device` in `ble.py` (bleak-based), which imports
 `backoff_seconds` from this module.
 """
+import asyncio
+import logging
 import random
 
 _MAX_BACKOFF_EXP = 30   # clamp the exponent so backoff can't grow to a bigint
@@ -26,3 +28,33 @@ def backoff_seconds(attempt, base=10.0, maximum=300.0, jitter=5.0, rand=None):
     attempt = min(max(attempt, 1), _MAX_BACKOFF_EXP)
     delay = min(base * (2 ** (attempt - 1)), maximum)
     return max(delay + rand(-jitter, jitter), 0.0)
+
+
+async def write_with_retry(client, char_uuid, value, lock=None, attempts=2,
+                           delay=0.2, sleep=None, name=""):
+    """Write a characteristic, retrying a transient failure once.
+
+    Commands only. A poll payload is already stale by the time its write fails
+    and the next poll asks the same question a moment later, so `ble._hold`
+    deliberately does not use this. A command is a user action that nothing
+    else repeats -- if the switch write is dropped, the switch simply does not
+    move -- so it is worth one more attempt.
+
+    Returns True if the write was accepted.
+    """
+    sleep = sleep or asyncio.sleep
+    for attempt in range(1, attempts + 1):
+        try:
+            if lock is not None:
+                async with lock:
+                    await client.write_gatt_char(char_uuid, value)
+            else:
+                await client.write_gatt_char(char_uuid, value)
+            return True
+        except Exception as e:
+            if attempt < attempts:
+                logging.debug("[%s] write failed (%r); retrying", name, e)
+                await sleep(delay)
+                continue
+            logging.warning("[%s] write failed after %d attempts: %r", name, attempts, e)
+    return False
