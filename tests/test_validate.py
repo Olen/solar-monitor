@@ -70,3 +70,31 @@ def test_hard_bounds_are_never_escaped(device):
         assert not set_cycles(device, 99999)   # above max
         assert not set_cycles(device, -1)      # below min
     assert device._charge_cycles['val'] == 63
+
+
+def set_soc(dev, value):
+    return dev.validate('_dsoc', value) is None
+
+
+def test_a_confirmed_value_clears_the_reject_run(device):
+    """Rejections must be consecutive, not merely three of them ever.
+
+    A pack at 99% emitted a spurious 67% three times across 4h44m while
+    thousands of good readings arrived in between. Without this, the escape
+    counted them as consecutive and published the bad value.
+    """
+    device._dsoc['val'] = 990
+    assert not set_soc(device, 670)             # 1st reject
+    assert not set_soc(device, 990)             # the pack confirms 99%
+    assert not set_soc(device, 670)             # counts as the 1st again
+    assert not set_soc(device, 670)             # 2nd
+    assert device._dsoc['val'] == 990, "a spurious value must not be believed"
+
+
+def test_a_genuinely_persistent_change_still_gets_through(device):
+    """The escape must still un-latch a real change."""
+    device._dsoc['val'] = 990
+    assert not set_soc(device, 670)
+    assert not set_soc(device, 670)
+    assert set_soc(device, 670)
+    assert device._dsoc['val'] == 670
