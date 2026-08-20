@@ -658,6 +658,10 @@ class PowerDevice():
         definition = getattr(self, var)
         val = float(val)
         if val == definition['val']:
+            # The device confirming the value it already holds ends any run of
+            # rejected readings: the escape below counts *consecutive* ones.
+            definition['rejected'] = 0
+            definition['rejected_val'] = None
             logging.debug("[{}] Value of {} out of bands: Changed from {} to {} (no diff)".format(self.name, var, definition['val'], val))
             return False
         if val > definition['max']:
