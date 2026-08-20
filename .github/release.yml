@@ -1,0 +1,20 @@
+# Release notes are generated from the titles of the pull requests merged since
+# the previous tag, so a title is the changelog entry a user reads. Name the
+# behaviour that changed for them, not the code that changed.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Fixes
+      labels: [bug]
+    - title: New
+      labels: [enhancement]
+    - title: Devices and protocols
+      labels: [device]
+    - title: Documentation
+      labels: [documentation]
+    - title: Build, CI and dependencies
+      labels: [dependencies, github_actions, ci]
+    - title: Other
+      labels: ["*"]
