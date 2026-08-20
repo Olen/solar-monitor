@@ -279,7 +279,10 @@ docker buildx imagetools inspect ghcr.io/olen/solar-monitor:latest
 ```
 
 The release notes are generated from the pull requests merged since the previous
-tag, with the pull command on top.
+tag, with the pull command on top, and grouped by label per
+`.github/release.yml`. A pull request title is therefore the changelog entry
+users read: name the behaviour that changed for them rather than the code that
+changed, and label it so it lands in the right group.
 
 Nothing is published on an ordinary push to `master`. Pull requests from this
 repository that touch the `Dockerfile`, `requirements.txt` or the workflow build
