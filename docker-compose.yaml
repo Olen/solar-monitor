@@ -16,6 +16,13 @@ services:
       - ~/solar-monitor/solar-monitor.ini:/solar-monitor/solar-monitor.ini
       - ~/solar-monitor/logs:/solar-monitor/solar-monitor
     restart: unless-stopped
+    logging:
+      # ~75 MB/day at the default log level: keep about ten days, compressed
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "8"
+        compress: "true"
 
 
 
