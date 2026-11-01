@@ -27,22 +27,22 @@ jobs:
 
       # libscrc has no aarch64 wheel and compiles in the builder stage, so the
       # arm64 build needs emulation.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64,arm
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Log in to ghcr.io
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         env:
           # Annotate the manifest list as well, so registries that read the
           # index rather than the per-platform config show the metadata.
@@ -63,7 +63,7 @@ jobs:
             org.opencontainers.image.vendor=Olen
             org.opencontainers.image.licenses=GPL-3.0-only
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           # arm/v7 is for 32-bit Raspberry Pi OS, which reports linux/arm/v8
