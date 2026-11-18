@@ -10,7 +10,7 @@ python-dateutil==2.9.0.post0
 requests==2.34.2
 
 # Pulled in by the above
-certifi==2026.7.22
+certifi==2026.10.19
 charset-normalizer==3.5.1
 dbus-fast==5.0.22
 idna==3.19
